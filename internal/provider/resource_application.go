@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -12,7 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
 )
 
 var _ resource.Resource = &ApplicationResource{}
@@ -514,7 +514,7 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	resp.Diagnostics.Append(diags...)
 }
 
-// updatePlanFromApplication updates the plan with values from the API response
+// updatePlanFromApplication updates the plan with values from the API response.
 func updatePlanFromApplication(plan *ApplicationResourceModel, app *client.Application) {
 	if app.EnvironmentID != "" {
 		plan.EnvironmentID = types.StringValue(app.EnvironmentID)

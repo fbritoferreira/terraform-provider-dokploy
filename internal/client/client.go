@@ -373,8 +373,8 @@ func (c *DokployClient) GetApplication(id string) (*Application, error) {
 	return &result, nil
 }
 
-// UpdateApplicationGeneral updates the general application settings
-// Corresponds to application.update endpoint for general fields
+// UpdateApplicationGeneral updates the general application settings.
+// Corresponds to application.update endpoint for general fields.
 func (c *DokployClient) UpdateApplicationGeneral(app Application) (*Application, error) {
 	payload := map[string]interface{}{
 		"applicationId": app.ID,
@@ -440,8 +440,8 @@ func (c *DokployClient) UpdateApplicationGeneral(app Application) (*Application,
 	return &result, nil
 }
 
-// UpdateApplication is kept for backward compatibility
-// It calls UpdateApplicationGeneral
+// UpdateApplication is kept for backward compatibility.
+// It calls UpdateApplicationGeneral.
 func (c *DokployClient) UpdateApplication(app Application) (*Application, error) {
 	return c.UpdateApplicationGeneral(app)
 }
@@ -489,8 +489,8 @@ func (c *DokployClient) StartApplication(id string) error {
 	return err
 }
 
-// SaveBuildType configures the build type settings for an application
-// Corresponds to application.saveBuildType endpoint
+// SaveBuildType configures the build type settings for an application.
+// Corresponds to application.saveBuildType endpoint.
 func (c *DokployClient) SaveBuildType(appID string, buildType string, dockerfile string, dockerContextPath string, dockerBuildStage string, publishDirectory string) error {
 	// The API requires all these fields to be present as strings (even if empty)
 	payload := map[string]interface{}{
@@ -506,7 +506,7 @@ func (c *DokployClient) SaveBuildType(appID string, buildType string, dockerfile
 	return err
 }
 
-// SaveGitProviderInput contains all the fields for the saveGitProvider endpoint
+// SaveGitProviderInput contains all the fields for the saveGitProvider endpoint.
 type SaveGitProviderInput struct {
 	ApplicationID      string
 	CustomGitBranch    string
@@ -517,8 +517,8 @@ type SaveGitProviderInput struct {
 	WatchPaths         []string
 }
 
-// SaveGitProvider configures the git provider settings for an application
-// Corresponds to application.saveGitProvider endpoint
+// SaveGitProvider configures the git provider settings for an application.
+// Corresponds to application.saveGitProvider endpoint.
 func (c *DokployClient) SaveGitProvider(input SaveGitProviderInput) error {
 	payload := map[string]interface{}{
 		"applicationId": input.ApplicationID,
@@ -547,7 +547,7 @@ func (c *DokployClient) SaveGitProvider(input SaveGitProviderInput) error {
 	return err
 }
 
-// SaveGithubProviderInput contains all the fields for the saveGithubProvider endpoint
+// SaveGithubProviderInput contains all the fields for the saveGithubProvider endpoint.
 type SaveGithubProviderInput struct {
 	ApplicationID    string
 	Repository       string
@@ -560,8 +560,8 @@ type SaveGithubProviderInput struct {
 	TriggerType      string // push, tag
 }
 
-// SaveGithubProvider configures the GitHub provider settings for an application
-// Corresponds to application.saveGithubProvider endpoint
+// SaveGithubProvider configures the GitHub provider settings for an application.
+// Corresponds to application.saveGithubProvider endpoint.
 func (c *DokployClient) SaveGithubProvider(input SaveGithubProviderInput) error {
 	payload := map[string]interface{}{
 		"applicationId":    input.ApplicationID,
@@ -602,7 +602,7 @@ func (c *DokployClient) SaveGithubProvider(input SaveGithubProviderInput) error 
 	return err
 }
 
-// SaveDockerProviderInput contains all the fields for the saveDockerProvider endpoint
+// SaveDockerProviderInput contains all the fields for the saveDockerProvider endpoint.
 type SaveDockerProviderInput struct {
 	ApplicationID string
 	DockerImage   string
@@ -611,8 +611,8 @@ type SaveDockerProviderInput struct {
 	RegistryUrl   string
 }
 
-// SaveDockerProvider configures the docker provider settings for an application
-// Corresponds to application.saveDockerProvider endpoint
+// SaveDockerProvider configures the docker provider settings for an application.
+// Corresponds to application.saveDockerProvider endpoint.
 func (c *DokployClient) SaveDockerProvider(input SaveDockerProviderInput) error {
 	payload := map[string]interface{}{
 		"applicationId": input.ApplicationID,
@@ -635,7 +635,7 @@ func (c *DokployClient) SaveDockerProvider(input SaveDockerProviderInput) error 
 	return err
 }
 
-// SaveEnvironmentInput contains all the fields for the saveEnvironment endpoint
+// SaveEnvironmentInput contains all the fields for the saveEnvironment endpoint.
 type SaveEnvironmentInput struct {
 	ApplicationID string
 	Env           string
@@ -644,8 +644,8 @@ type SaveEnvironmentInput struct {
 	CreateEnvFile *bool
 }
 
-// SaveEnvironment configures the environment variables for an application
-// Corresponds to application.saveEnvironment endpoint
+// SaveEnvironment configures the environment variables for an application.
+// Corresponds to application.saveEnvironment endpoint.
 func (c *DokployClient) SaveEnvironment(input SaveEnvironmentInput) error {
 	payload := map[string]interface{}{
 		"applicationId": input.ApplicationID,
