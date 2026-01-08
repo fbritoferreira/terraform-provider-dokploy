@@ -194,5 +194,10 @@ func (r *EnvironmentVariablesResource) Delete(ctx context.Context, req resource.
 }
 
 func (r *EnvironmentVariablesResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("application_id"), req, resp)
+	// The import ID is the application_id
+	applicationID := req.ID
+
+	// Set both id and application_id to the same value
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), applicationID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("application_id"), applicationID)...)
 }

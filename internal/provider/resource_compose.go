@@ -73,6 +73,9 @@ func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"compose_file_content": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"source_type": schema.StringAttribute{
 				Optional: true,
@@ -83,12 +86,24 @@ func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"custom_git_url": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"custom_git_branch": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"custom_git_ssh_key_id": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"compose_path": schema.StringAttribute{
 				Optional: true,
@@ -109,7 +124,11 @@ func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"server_id": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Server ID to deploy the compose stack to. If not specified, deploys to the default server.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -172,10 +191,36 @@ func (r *ComposeResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.SourceType = types.StringValue(createdComp.SourceType)
 	plan.ComposePath = types.StringValue(createdComp.ComposePath)
 	plan.AutoDeploy = types.BoolValue(createdComp.AutoDeploy)
+
 	if createdComp.ComposeFile != "" {
 		plan.ComposeFileContent = types.StringValue(createdComp.ComposeFile)
 	} else {
 		plan.ComposeFileContent = types.StringNull()
+	}
+
+	// Set optional Git fields from response or null
+	if createdComp.CustomGitUrl != "" {
+		plan.CustomGitUrl = types.StringValue(createdComp.CustomGitUrl)
+	} else if plan.CustomGitUrl.IsUnknown() {
+		plan.CustomGitUrl = types.StringNull()
+	}
+
+	if createdComp.CustomGitBranch != "" {
+		plan.CustomGitBranch = types.StringValue(createdComp.CustomGitBranch)
+	} else if plan.CustomGitBranch.IsUnknown() {
+		plan.CustomGitBranch = types.StringNull()
+	}
+
+	if createdComp.CustomGitSSHKeyId != "" {
+		plan.CustomGitSSHKeyID = types.StringValue(createdComp.CustomGitSSHKeyId)
+	} else if plan.CustomGitSSHKeyID.IsUnknown() {
+		plan.CustomGitSSHKeyID = types.StringNull()
+	}
+
+	if createdComp.ServerID != "" {
+		plan.ServerID = types.StringValue(createdComp.ServerID)
+	} else if plan.ServerID.IsUnknown() {
+		plan.ServerID = types.StringNull()
 	}
 
 	if !plan.DeployOnCreate.IsNull() && plan.DeployOnCreate.ValueBool() {
@@ -208,14 +253,40 @@ func (r *ComposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	state.Name = types.StringValue(comp.Name)
+	if comp.ProjectID != "" {
+		state.ProjectID = types.StringValue(comp.ProjectID)
+	}
 	state.EnvironmentID = types.StringValue(comp.EnvironmentID)
 	state.ComposeFileContent = types.StringValue(comp.ComposeFile)
 	state.SourceType = types.StringValue(comp.SourceType)
-	state.CustomGitUrl = types.StringValue(comp.CustomGitUrl)
-	state.CustomGitBranch = types.StringValue(comp.CustomGitBranch)
-	state.CustomGitSSHKeyID = types.StringValue(comp.CustomGitSSHKeyId)
+
+	// Only update optional Git fields if they're non-empty from API
+	if comp.CustomGitUrl != "" {
+		state.CustomGitUrl = types.StringValue(comp.CustomGitUrl)
+	} else if state.CustomGitUrl.IsUnknown() {
+		state.CustomGitUrl = types.StringNull()
+	}
+
+	if comp.CustomGitBranch != "" {
+		state.CustomGitBranch = types.StringValue(comp.CustomGitBranch)
+	} else if state.CustomGitBranch.IsUnknown() {
+		state.CustomGitBranch = types.StringNull()
+	}
+
+	if comp.CustomGitSSHKeyId != "" {
+		state.CustomGitSSHKeyID = types.StringValue(comp.CustomGitSSHKeyId)
+	} else if state.CustomGitSSHKeyID.IsUnknown() {
+		state.CustomGitSSHKeyID = types.StringNull()
+	}
+
 	state.ComposePath = types.StringValue(comp.ComposePath)
 	state.AutoDeploy = types.BoolValue(comp.AutoDeploy)
+
+	if comp.ServerID != "" {
+		state.ServerID = types.StringValue(comp.ServerID)
+	} else if state.ServerID.IsUnknown() {
+		state.ServerID = types.StringNull()
+	}
 
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)

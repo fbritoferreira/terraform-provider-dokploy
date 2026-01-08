@@ -912,9 +912,11 @@ func (c *DokployClient) CreateDatabase(projectID, environmentID, name, dbType, p
 	case "mysql":
 		endpoint = "mysql.create"
 		payload["databaseUser"] = "root"
+		payload["databaseRootPassword"] = password // MySQL requires separate root password
 	case "mariadb":
 		endpoint = "mariadb.create"
 		payload["databaseUser"] = "root"
+		payload["databaseRootPassword"] = password // MariaDB requires separate root password
 	case "mongo":
 		endpoint = "mongo.create"
 		payload["databaseUser"] = "mongo"
@@ -985,11 +987,31 @@ func (c *DokployClient) CreateDatabase(projectID, environmentID, name, dbType, p
 	var wrapper struct {
 		Database Database `json:"database"`
 	}
-	if err := json.Unmarshal(resp, &wrapper); err == nil && wrapper.Database.ID != "" {
-		if wrapper.Database.Type == "" {
-			wrapper.Database.Type = dbType
+	if err := json.Unmarshal(resp, &wrapper); err == nil {
+		db := wrapper.Database
+
+		// Extract ID from type-specific fields if generic ID is not set
+		if db.ID == "" {
+			switch dbType {
+			case "postgres":
+				db.ID = db.PostgresID
+			case "mysql":
+				db.ID = db.MysqlID
+			case "mariadb":
+				db.ID = db.MariadbID
+			case "mongo":
+				db.ID = db.MongoID
+			case "redis":
+				db.ID = db.RedisID
+			}
 		}
-		return &wrapper.Database, nil
+
+		if db.ID != "" {
+			if db.Type == "" {
+				db.Type = dbType
+			}
+			return &db, nil
+		}
 	}
 
 	var result Database
@@ -999,6 +1021,23 @@ func (c *DokployClient) CreateDatabase(projectID, environmentID, name, dbType, p
 	if result.Type == "" {
 		result.Type = dbType
 	}
+
+	// Extract ID from type-specific fields if generic ID is not set
+	if result.ID == "" {
+		switch dbType {
+		case "postgres":
+			result.ID = result.PostgresID
+		case "mysql":
+			result.ID = result.MysqlID
+		case "mariadb":
+			result.ID = result.MariadbID
+		case "mongo":
+			result.ID = result.MongoID
+		case "redis":
+			result.ID = result.RedisID
+		}
+	}
+
 	return &result, nil
 }
 
@@ -1703,11 +1742,13 @@ func (c *DokployClient) CreateMount(mount Mount) (*Mount, error) {
 		return nil, err
 	}
 
+	// Try to unmarshal as Mount object
 	var result Mount
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
+	if err := json.Unmarshal(resp, &result); err == nil && result.ID != "" {
+		return &result, nil
 	}
-	return &result, nil
+
+	return nil, fmt.Errorf("failed to parse mount response or mount ID not set: %s", string(resp))
 }
 
 func (c *DokployClient) GetMount(id string) (*Mount, error) {
@@ -1801,11 +1842,13 @@ func (c *DokployClient) CreatePort(port Port) (*Port, error) {
 		return nil, err
 	}
 
+	// Try to unmarshal as Port object
 	var result Port
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
+	if err := json.Unmarshal(resp, &result); err == nil && result.ID != "" {
+		return &result, nil
 	}
-	return &result, nil
+
+	return nil, fmt.Errorf("failed to parse port response or port ID not set: %s", string(resp))
 }
 
 func (c *DokployClient) GetPort(id string) (*Port, error) {
@@ -1880,11 +1923,18 @@ func (c *DokployClient) CreateRedirect(redirect Redirect) (*Redirect, error) {
 		return nil, err
 	}
 
+	// Try to unmarshal as Redirect object first
 	var result Redirect
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
+	if err := json.Unmarshal(resp, &result); err == nil && result.ID != "" {
+		return &result, nil
 	}
-	return &result, nil
+
+	// API returns boolean true on success - we don't have the ID
+	if string(resp) == "true" {
+		return nil, fmt.Errorf("redirect created but API did not return redirect details (no ID available)")
+	}
+
+	return nil, fmt.Errorf("unexpected API response format: %s", string(resp))
 }
 
 func (c *DokployClient) GetRedirect(id string) (*Redirect, error) {

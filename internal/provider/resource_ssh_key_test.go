@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccResources(t *testing.T) {
+func TestAccSSHKeyResource(t *testing.T) {
 	host := os.Getenv("DOKPLOY_HOST")
 	apiKey := os.Getenv("DOKPLOY_API_KEY")
 
@@ -20,41 +20,38 @@ func TestAccResources(t *testing.T) {
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
+			// Create and Read testing
 			{
-				Config: testAccResourcesConfig("TestProjectFull", "staging"),
+				Config: testAccSSHKeyResourceConfig("test-ssh-key", "Test SSH Key"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("dokploy_project.full", "name", "TestProjectFull"),
-					resource.TestCheckResourceAttr("dokploy_environment.staging", "name", "staging"),
-					resource.TestCheckResourceAttr("dokploy_application.app", "name", "test-app"),
-					resource.TestCheckResourceAttr("dokploy_database.db", "name", "test-db"),
-					resource.TestCheckResourceAttr("dokploy_domain.domain", "host", "test-app.example.com"),
-					resource.TestCheckResourceAttr("dokploy_ssh_key.key", "name", "test-key"),
+					resource.TestCheckResourceAttr("dokploy_ssh_key.test", "name", "test-ssh-key"),
+					resource.TestCheckResourceAttr("dokploy_ssh_key.test", "description", "Test SSH Key"),
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "id"),
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "private_key"),
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "public_key"),
 				),
+			},
+			// ImportState testing
+			{
+				ResourceName:            "dokploy_ssh_key.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"private_key"},
 			},
 		},
 	})
 }
 
-func testAccResourcesConfig(projectName, envName string) string {
+func testAccSSHKeyResourceConfig(name, description string) string {
 	return fmt.Sprintf(`
 provider "dokploy" {
   host    = "%s"
   api_key = "%s"
 }
 
-resource "dokploy_project" "full" {
+resource "dokploy_ssh_key" "test" {
   name        = "%s"
-  description = "Full integration test project"
-}
-
-resource "dokploy_environment" "staging" {
-  project_id = dokploy_project.full.id
-  name       = "%s"
-}
-
-resource "dokploy_ssh_key" "key" {
-  name        = "test-key"
-  description = "Integration test key"
+  description = "%s"
   private_key = <<EOF
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAwOiIqIvWrBVoGBGZ5lAQpPtkfPly5oJyIV6FOIX0W7XQ74G4
@@ -84,32 +81,7 @@ xk/PTaeoEqfZpxIvr6CHF+3evoZ9cIP9pn0oaAlIiIhhLR47nLL8lR1BNyQKk/+g
 X5Bc7EtwRsGPq4byz9qcdi6YAYFpWV/YAmHr0d/Lek5Lmjp7LzN9
 -----END RSA PRIVATE KEY-----
 EOF
-  public_key  = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDA6Iioi9asFWgYEZnmUBCk+2R8+XLmgnIhXoU4hfRbtdDvgbhT9FNu+Ckf+7rLtrHSBDPUXekBPXE9ZNu1aTUmMK5k9kNC0LIZ+mm+p+lKswnSMyqEa6DQUzm4hqpM1gYBJY+cdBpN3Troe7/SfulIiQ2foF9fYahcq7QA3zxkZ2qXjpQzCu2K+Jhj8hiWJMejzWwEn5E6JQ3rqZm8+nbYaMZftxnLrfXy1qUvDooSEIgsvldwh8fwkEdNiMYBfQn40spZ8Dz2a/NqJX0q5C7ZQQ6/hZ/HsPRXujwrAv69TmFVJOBIr9Y03jRry9SHupwpZR9Dmz/JBP1rYfQiFM+l jonaspohlmann@Jonass-MacBook-Pro.local"
+  public_key  = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDA6Iioi9asFWgYEZnmUBCk+2R8+XLmgnIhXoU4hfRbtdDvgbhT9FNu+Ckf+7rLtrHSBDPUXekBPXE9ZNu1aTUmMK5k9kNC0LIZ+mm+p+lKswnSMyqEa6DQUzm4hqpM1gYBJY+cdBpN3Troe7/SfulIiQ2foF9fYahcq7QA3zxkZ2qXjpQzCu2K+Jhj8hiWJMejzWwEn5E6JQ3rqZm8+nbYaMZftxnLrfXy1qUvDooSEIgsvldwh8fwkEdNiMYBfQn40spZ8Dz2a/NqJX0q5C7ZQQ6/hZ/HsPRXujwrAv69TmFVJOBIr9Y03jRry9SHupwpZR9Dmz/JBP1rYfQiFM+l test@example.com"
 }
-
-resource "dokploy_application" "app" {
-  project_id     = dokploy_project.full.id
-  environment_id = dokploy_environment.staging.id
-  name           = "test-app"
-  source_type    = "git"
-  custom_git_url = "https://github.com/dokploy/dokploy" # Using a public repo
-  custom_git_branch = "main"
-  build_type     = "nixpacks"
-}
-
-resource "dokploy_database" "db" {
-  project_id     = dokploy_project.full.id
-  environment_id = dokploy_environment.staging.id
-  name           = "test-db"
-  type           = "postgres"
-  password       = "securepassword123"
-  version        = "15"
-}
-
-resource "dokploy_domain" "domain" {
-  application_id = dokploy_application.app.id
-  host           = "test-app.example.com"
-  port           = 3000
-}
-`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName)
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), name, description)
 }

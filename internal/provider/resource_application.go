@@ -132,6 +132,9 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:    true,
 				Computed:    true,
 				Description: "The source type for the application: github, gitlab, bitbucket, git, docker, or drop.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Git provider settings (for source_type = "git")
@@ -165,26 +168,41 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:    true,
 				Computed:    true,
 				Description: "Repository name for GitHub source (e.g., 'my-repo').",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"branch": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Branch to deploy from.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"owner": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Repository owner/organization for GitHub source.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"build_path": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Build path within the repository for GitHub source.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"github_id": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "GitHub App installation ID. Required for GitHub source type.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"trigger_type": schema.StringAttribute{
 				Optional:    true,
@@ -252,11 +270,19 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			// Environment settings
 			"env": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Environment variables in KEY=VALUE format, one per line.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"build_args": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Build arguments in KEY=VALUE format, one per line.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Runtime configuration
@@ -264,9 +290,13 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:    true,
 				Computed:    true,
 				Description: "Enable automatic deployment on Git push.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"replicas": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Number of replicas to run.",
 			},
 			"memory_limit": schema.Int64Attribute{
@@ -515,6 +545,7 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 }
 
 // updatePlanFromApplication updates the plan with values from the API response.
+// It only updates computed values or values that weren't explicitly set in the plan.
 func updatePlanFromApplication(plan *ApplicationResourceModel, app *client.Application) {
 	if app.EnvironmentID != "" {
 		plan.EnvironmentID = types.StringValue(app.EnvironmentID)
@@ -522,31 +553,42 @@ func updatePlanFromApplication(plan *ApplicationResourceModel, app *client.Appli
 	if app.AppName != "" {
 		plan.AppName = types.StringValue(app.AppName)
 	}
-	if app.Repository != "" {
-		plan.Repository = types.StringValue(app.Repository)
-	}
-	if app.Branch != "" {
-		plan.Branch = types.StringValue(app.Branch)
-	}
-	if app.Owner != "" {
-		plan.Owner = types.StringValue(app.Owner)
-	}
-	if app.GithubId != "" {
-		plan.GithubId = types.StringValue(app.GithubId)
-	}
-	if app.BuildType != "" {
-		plan.BuildType = types.StringValue(app.BuildType)
-	}
-	if app.SourceType != "" {
-		plan.SourceType = types.StringValue(app.SourceType)
-	}
 
 	// For computed fields that may be empty, always set them to avoid "unknown after apply" errors
-	plan.DockerfilePath = types.StringValue(app.DockerfilePath)
-	plan.DockerContextPath = types.StringValue(app.DockerContextPath)
-	plan.DockerBuildStage = types.StringValue(app.DockerBuildStage)
-	plan.BuildPath = types.StringValue(app.BuildPath)
-	plan.TriggerType = types.StringValue(app.TriggerType)
+	// But only if they weren't explicitly set in the plan
+	if plan.Repository.IsNull() || plan.Repository.IsUnknown() {
+		plan.Repository = types.StringValue(app.Repository)
+	}
+	if plan.Branch.IsNull() || plan.Branch.IsUnknown() {
+		plan.Branch = types.StringValue(app.Branch)
+	}
+	if plan.Owner.IsNull() || plan.Owner.IsUnknown() {
+		plan.Owner = types.StringValue(app.Owner)
+	}
+	if plan.GithubId.IsNull() || plan.GithubId.IsUnknown() {
+		plan.GithubId = types.StringValue(app.GithubId)
+	}
+	if plan.BuildType.IsNull() || plan.BuildType.IsUnknown() {
+		plan.BuildType = types.StringValue(app.BuildType)
+	}
+	if plan.SourceType.IsNull() || plan.SourceType.IsUnknown() {
+		plan.SourceType = types.StringValue(app.SourceType)
+	}
+	if plan.DockerfilePath.IsNull() || plan.DockerfilePath.IsUnknown() {
+		plan.DockerfilePath = types.StringValue(app.DockerfilePath)
+	}
+	if plan.DockerContextPath.IsNull() || plan.DockerContextPath.IsUnknown() {
+		plan.DockerContextPath = types.StringValue(app.DockerContextPath)
+	}
+	if plan.DockerBuildStage.IsNull() || plan.DockerBuildStage.IsUnknown() {
+		plan.DockerBuildStage = types.StringValue(app.DockerBuildStage)
+	}
+	if plan.BuildPath.IsNull() || plan.BuildPath.IsUnknown() {
+		plan.BuildPath = types.StringValue(app.BuildPath)
+	}
+	if plan.TriggerType.IsNull() || plan.TriggerType.IsUnknown() {
+		plan.TriggerType = types.StringValue(app.TriggerType)
+	}
 
 	if app.CustomGitUrl != "" {
 		plan.CustomGitUrl = types.StringValue(app.CustomGitUrl)
@@ -569,6 +611,38 @@ func updatePlanFromApplication(plan *ApplicationResourceModel, app *client.Appli
 
 	plan.AutoDeploy = types.BoolValue(app.AutoDeploy)
 	plan.EnableSubmodules = types.BoolValue(app.EnableSubmodules)
+
+	// Set replicas - if not set in config, use API value or set to null
+	if app.Replicas > 0 {
+		plan.Replicas = types.Int64Value(int64(app.Replicas))
+	} else if plan.Replicas.IsUnknown() {
+		plan.Replicas = types.Int64Null()
+	}
+
+	// For env and build_args: only update if they were explicitly set in plan
+	// If null in plan, keep them null even if API returns values
+	// This prevents drift when using separate environment_variables resource
+	if plan.Env.IsUnknown() {
+		if app.Env != "" {
+			plan.Env = types.StringValue(app.Env)
+		} else {
+			plan.Env = types.StringNull()
+		}
+	} else if plan.Env.IsNull() {
+		// Keep as null even if API returns a value
+		plan.Env = types.StringNull()
+	}
+
+	if plan.BuildArgs.IsUnknown() {
+		if app.BuildArgs != "" {
+			plan.BuildArgs = types.StringValue(app.BuildArgs)
+		} else {
+			plan.BuildArgs = types.StringNull()
+		}
+	} else if plan.BuildArgs.IsNull() {
+		// Keep as null even if API returns a value
+		plan.BuildArgs = types.StringNull()
+	}
 }
 
 func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -673,11 +747,22 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	// Environment fields
-	if app.Env != "" {
-		state.Env = types.StringValue(app.Env)
+	// Only update env and build_args if they were set in config (not null/unknown)
+	// This prevents drift when using separate environment_variables resource
+	if !state.Env.IsNull() {
+		if app.Env != "" {
+			state.Env = types.StringValue(app.Env)
+		} else {
+			state.Env = types.StringNull()
+		}
 	}
-	if app.BuildArgs != "" {
-		state.BuildArgs = types.StringValue(app.BuildArgs)
+
+	if !state.BuildArgs.IsNull() {
+		if app.BuildArgs != "" {
+			state.BuildArgs = types.StringValue(app.BuildArgs)
+		} else {
+			state.BuildArgs = types.StringNull()
+		}
 	}
 
 	// Runtime configuration
