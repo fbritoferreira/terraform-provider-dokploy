@@ -1609,6 +1609,7 @@ type Server struct {
 	OrganizationID      string `json:"organizationId"`
 	AppName             string `json:"appName"`
 	EnableDockerCleanup bool   `json:"enableDockerCleanup"`
+	Command             string `json:"command"`
 }
 
 func (c *DokployClient) ListServers() ([]Server, error) {
@@ -2383,4 +2384,216 @@ func (c *DokployClient) GetBackupsByDatabaseID(databaseID, databaseType string) 
 	}
 
 	return result.Backups, nil
+}
+
+// CreateServer creates a new remote server.
+func (c *DokployClient) CreateServer(server Server) (*Server, error) {
+	payload := map[string]interface{}{
+		"name":       server.Name,
+		"ipAddress":  server.IPAddress,
+		"port":       server.Port,
+		"username":   server.Username,
+		"sshKeyId":   server.SSHKeyID,
+		"serverType": server.ServerType,
+	}
+
+	if server.Description != "" {
+		payload["description"] = server.Description
+	}
+
+	resp, err := c.doRequest("POST", "server.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Server
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal server response: %w", err)
+	}
+	return &result, nil
+}
+
+// UpdateServer updates an existing server.
+func (c *DokployClient) UpdateServer(server Server) (*Server, error) {
+	payload := map[string]interface{}{
+		"serverId":   server.ID,
+		"name":       server.Name,
+		"ipAddress":  server.IPAddress,
+		"port":       server.Port,
+		"username":   server.Username,
+		"sshKeyId":   server.SSHKeyID,
+		"serverType": server.ServerType,
+	}
+
+	if server.Description != "" {
+		payload["description"] = server.Description
+	}
+	if server.Command != "" {
+		payload["command"] = server.Command
+	}
+
+	resp, err := c.doRequest("POST", "server.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle empty response.
+	if len(resp) == 0 {
+		return c.GetServer(server.ID)
+	}
+
+	var result Server
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteServer removes a server by ID.
+func (c *DokployClient) DeleteServer(id string) error {
+	payload := map[string]string{
+		"serverId": id,
+	}
+	_, err := c.doRequest("POST", "server.remove", payload)
+	return err
+}
+
+// Redis represents a Redis database instance.
+type Redis struct {
+	RedisID           string `json:"redisId"`
+	Name              string `json:"name"`
+	AppName           string `json:"appName"`
+	Description       string `json:"description"`
+	DatabasePassword  string `json:"databasePassword"`
+	DockerImage       string `json:"dockerImage"`
+	Command           string `json:"command"`
+	Env               string `json:"env"`
+	MemoryReservation string `json:"memoryReservation"`
+	MemoryLimit       string `json:"memoryLimit"`
+	CPUReservation    string `json:"cpuReservation"`
+	CPULimit          string `json:"cpuLimit"`
+	ExternalPort      int    `json:"externalPort"`
+	EnvironmentID     string `json:"environmentId"`
+	ApplicationStatus string `json:"applicationStatus"`
+	Replicas          int    `json:"replicas"`
+	ServerID          string `json:"serverId"`
+}
+
+// CreateRedis creates a new Redis database instance.
+func (c *DokployClient) CreateRedis(redis Redis) (*Redis, error) {
+	payload := map[string]interface{}{
+		"name":             redis.Name,
+		"appName":          redis.AppName,
+		"databasePassword": redis.DatabasePassword,
+		"environmentId":    redis.EnvironmentID,
+	}
+
+	if redis.DockerImage != "" {
+		payload["dockerImage"] = redis.DockerImage
+	}
+	if redis.Description != "" {
+		payload["description"] = redis.Description
+	}
+	if redis.ServerID != "" {
+		payload["serverId"] = redis.ServerID
+	}
+
+	resp, err := c.doRequest("POST", "redis.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Redis
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal redis response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetRedis retrieves a Redis instance by ID.
+func (c *DokployClient) GetRedis(id string) (*Redis, error) {
+	endpoint := fmt.Sprintf("redis.one?redisId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Redis
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdateRedis updates an existing Redis instance.
+func (c *DokployClient) UpdateRedis(redis Redis) (*Redis, error) {
+	payload := map[string]interface{}{
+		"redisId": redis.RedisID,
+	}
+
+	if redis.Name != "" {
+		payload["name"] = redis.Name
+	}
+	if redis.AppName != "" {
+		payload["appName"] = redis.AppName
+	}
+	if redis.Description != "" {
+		payload["description"] = redis.Description
+	}
+	if redis.DatabasePassword != "" {
+		payload["databasePassword"] = redis.DatabasePassword
+	}
+	if redis.DockerImage != "" {
+		payload["dockerImage"] = redis.DockerImage
+	}
+	if redis.Command != "" {
+		payload["command"] = redis.Command
+	}
+	if redis.Env != "" {
+		payload["env"] = redis.Env
+	}
+	if redis.MemoryReservation != "" {
+		payload["memoryReservation"] = redis.MemoryReservation
+	}
+	if redis.MemoryLimit != "" {
+		payload["memoryLimit"] = redis.MemoryLimit
+	}
+	if redis.CPUReservation != "" {
+		payload["cpuReservation"] = redis.CPUReservation
+	}
+	if redis.CPULimit != "" {
+		payload["cpuLimit"] = redis.CPULimit
+	}
+	if redis.ExternalPort > 0 {
+		payload["externalPort"] = redis.ExternalPort
+	}
+	if redis.Replicas > 0 {
+		payload["replicas"] = redis.Replicas
+	}
+
+	resp, err := c.doRequest("POST", "redis.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle empty response or non-JSON response (API may return boolean).
+	if len(resp) == 0 {
+		return c.GetRedis(redis.RedisID)
+	}
+
+	var result Redis
+	if err := json.Unmarshal(resp, &result); err != nil {
+		// API might return a boolean or other non-object response.
+		return c.GetRedis(redis.RedisID)
+	}
+	return &result, nil
+}
+
+// DeleteRedis removes a Redis instance by ID.
+func (c *DokployClient) DeleteRedis(id string) error {
+	payload := map[string]string{
+		"redisId": id,
+	}
+	_, err := c.doRequest("POST", "redis.remove", payload)
+	return err
 }
