@@ -2,157 +2,24 @@
 page_title: "dokploy_domain Resource - dokploy"
 subcategory: ""
 description: |-
-  Manages a domain for a Dokploy application or compose service. Configures routing through Traefik.
+  Manages a domain for a Dokploy application or compose service.
 ---
 
 # dokploy_domain (Resource)
 
-Manages a domain for a Dokploy application or compose service. This resource configures routing through Traefik, including SSL certificate management via Let's Encrypt.
+Manages a domain for a Dokploy application or compose service. Configures routing through Traefik.
 
 ## Example Usage
 
 ### Basic Domain with HTTPS
 
 ```terraform
-resource "dokploy_application" "myapp" {
-  name         = "myapp"
-  project_id   = dokploy_project.myproject.id
-  source_type  = "docker"
-  docker_image = "nginx:alpine"
-}
-
 resource "dokploy_domain" "myapp" {
-  application_id = dokploy_application.myapp.id
-  host           = "myapp.example.com"
-  port           = 80
-  https          = true
+  application_id   = dokploy_application.myapp.id
+  host             = "myapp.example.com"
+  port             = 80
+  https            = true
   certificate_type = "letsencrypt"
-}
-```
-
-### Domain with Custom Path
-
-```terraform
-resource "dokploy_domain" "api" {
-  application_id = dokploy_application.api.id
-  host           = "example.com"
-  path           = "/api"
-  port           = 3000
-  https          = true
-  certificate_type = "letsencrypt"
-}
-```
-
-### Generate traefik.me Domain (Development)
-
-```terraform
-resource "dokploy_application" "dev_app" {
-  name         = "dev-app"
-  project_id   = dokploy_project.dev.id
-  source_type  = "docker"
-  docker_image = "nginx:alpine"
-}
-
-# Generate a free traefik.me domain for development/testing
-resource "dokploy_domain" "dev_traefik_me" {
-  application_id     = dokploy_application.dev_app.id
-  generate_traefik_me = true
-  port               = 80
-}
-```
-
-### Domain for Compose Service
-
-```terraform
-resource "dokploy_compose" "wordpress" {
-  name           = "wordpress"
-  project_id     = dokploy_project.myproject.id
-  environment_id = dokploy_environment.production.id
-  source_type    = "raw"
-  
-  compose_file_content = <<-EOT
-    version: '3.8'
-    services:
-      wordpress:
-        image: wordpress:latest
-        ports:
-          - "8080:80"
-      db:
-        image: mysql:8.0
-  EOT
-}
-
-resource "dokploy_domain" "wordpress" {
-  compose_id   = dokploy_compose.wordpress.id
-  service_name = "wordpress"
-  host         = "blog.example.com"
-  port         = 80
-  https        = true
-  certificate_type = "letsencrypt"
-}
-```
-
-### Domain without HTTPS
-
-```terraform
-resource "dokploy_domain" "internal" {
-  application_id   = dokploy_application.internal_service.id
-  host             = "internal.local"
-  port             = 8080
-  https            = false
-  certificate_type = "none"
-}
-```
-
-### Multiple Domains for Same Application
-
-```terraform
-resource "dokploy_application" "webapp" {
-  name         = "webapp"
-  project_id   = dokploy_project.myproject.id
-  source_type  = "docker"
-  docker_image = "myorg/webapp:latest"
-}
-
-# Main domain
-resource "dokploy_domain" "main" {
-  application_id = dokploy_application.webapp.id
-  host           = "example.com"
-  port           = 3000
-  https          = true
-  certificate_type = "letsencrypt"
-}
-
-# WWW subdomain
-resource "dokploy_domain" "www" {
-  application_id = dokploy_application.webapp.id
-  host           = "www.example.com"
-  port           = 3000
-  https          = true
-  certificate_type = "letsencrypt"
-}
-
-# API subdomain with path
-resource "dokploy_domain" "api" {
-  application_id = dokploy_application.webapp.id
-  host           = "api.example.com"
-  path           = "/"
-  port           = 3000
-  https          = true
-  certificate_type = "letsencrypt"
-}
-```
-
-### Domain with Redeploy on Update
-
-```terraform
-resource "dokploy_domain" "production" {
-  application_id     = dokploy_application.myapp.id
-  host               = "app.example.com"
-  port               = 3000
-  https              = true
-  certificate_type   = "letsencrypt"
-  redeploy_on_update = true
 }
 ```
 
@@ -161,16 +28,16 @@ resource "dokploy_domain" "production" {
 
 ### Optional
 
-- `application_id` (String) The ID of the application to attach this domain to. Either application_id or compose_id must be specified.
+- `application_id` (String)
 - `certificate_type` (String) Certificate type: 'none', 'letsencrypt'. Defaults to 'letsencrypt' when https is true.
-- `compose_id` (String) The ID of the compose stack to attach this domain to. Either application_id or compose_id must be specified.
-- `generate_traefik_me` (Boolean) If true, generates a traefik.me domain for the application. Useful for development/testing without a custom domain.
-- `host` (String) The hostname for this domain (e.g., 'app.example.com').
-- `https` (Boolean) Enable HTTPS for the domain. When true, Traefik will handle SSL termination.
-- `path` (String) URL path to route to this service (e.g., '/api'). Defaults to '/'.
-- `port` (Number) The port on the container to route traffic to.
+- `compose_id` (String)
+- `generate_traefik_me` (Boolean) If true, generates a traefik.me domain for the application.
+- `host` (String)
+- `https` (Boolean) Enable HTTPS for the domain.
+- `path` (String)
+- `port` (Number)
 - `redeploy_on_update` (Boolean) If true, triggers a redeploy of the associated application or compose stack when the domain is created or updated.
-- `service_name` (String) For compose stacks, the name of the service to route traffic to.
+- `service_name` (String)
 
 ### Read-Only
 
@@ -180,9 +47,6 @@ resource "dokploy_domain" "production" {
 
 Import is supported using the following syntax:
 
-The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
-
 ```shell
-# Domains can be imported using their ID
 terraform import dokploy_domain.myapp "domain-id-123"
 ```

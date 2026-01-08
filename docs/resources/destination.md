@@ -2,12 +2,12 @@
 page_title: "dokploy_destination Resource - dokploy"
 subcategory: ""
 description: |-
-  Manages a backup destination (S3, MinIO, etc.) for Dokploy backups.
+  Manages an S3-compatible backup destination in Dokploy.
 ---
 
 # dokploy_destination (Resource)
 
-Manages a backup destination for storing Dokploy database backups. Destinations are S3-compatible storage locations where automated backups are stored.
+Manages an S3-compatible backup destination in Dokploy. Destinations are used to store database backups.
 
 ## Example Usage
 
@@ -15,126 +15,11 @@ Manages a backup destination for storing Dokploy database backups. Destinations 
 
 ```terraform
 resource "dokploy_destination" "s3" {
-  name              = "aws-s3-backups"
-  storage_provider  = "s3"
-  access_key        = var.aws_access_key
+  name             = "aws-backups"
+  bucket           = "my-backup-bucket"
+  region           = "us-east-1"
+  access_key       = var.aws_access_key
   secret_access_key = var.aws_secret_key
-  bucket            = "my-dokploy-backups"
-  region            = "us-east-1"
-  endpoint          = "https://s3.amazonaws.com"
-}
-```
-
-### MinIO Destination
-
-```terraform
-resource "dokploy_destination" "minio" {
-  name              = "minio-backups"
-  storage_provider  = "s3"
-  access_key        = var.minio_access_key
-  secret_access_key = var.minio_secret_key
-  bucket            = "database-backups"
-  region            = "us-east-1"
-  endpoint          = "https://minio.example.com"
-}
-```
-
-### DigitalOcean Spaces
-
-```terraform
-resource "dokploy_destination" "spaces" {
-  name              = "do-spaces-backups"
-  storage_provider  = "s3"
-  access_key        = var.do_spaces_key
-  secret_access_key = var.do_spaces_secret
-  bucket            = "my-backups"
-  region            = "nyc3"
-  endpoint          = "https://nyc3.digitaloceanspaces.com"
-}
-```
-
-### Backblaze B2
-
-```terraform
-resource "dokploy_destination" "b2" {
-  name              = "backblaze-backups"
-  storage_provider  = "s3"
-  access_key        = var.b2_key_id
-  secret_access_key = var.b2_application_key
-  bucket            = "dokploy-db-backups"
-  region            = "us-west-002"
-  endpoint          = "https://s3.us-west-002.backblazeb2.com"
-}
-```
-
-### Cloudflare R2
-
-```terraform
-resource "dokploy_destination" "r2" {
-  name              = "cloudflare-r2-backups"
-  storage_provider  = "s3"
-  access_key        = var.r2_access_key
-  secret_access_key = var.r2_secret_key
-  bucket            = "backups"
-  region            = "auto"
-  endpoint          = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
-}
-```
-
-### Wasabi
-
-```terraform
-resource "dokploy_destination" "wasabi" {
-  name              = "wasabi-backups"
-  storage_provider  = "s3"
-  access_key        = var.wasabi_access_key
-  secret_access_key = var.wasabi_secret_key
-  bucket            = "dokploy-backups"
-  region            = "us-east-1"
-  endpoint          = "https://s3.wasabisys.com"
-}
-```
-
-### Complete Backup Setup Example
-
-```terraform
-# Create a backup destination
-resource "dokploy_destination" "primary" {
-  name              = "primary-backup-storage"
-  storage_provider  = "s3"
-  access_key        = var.s3_access_key
-  secret_access_key = var.s3_secret_key
-  bucket            = "dokploy-backups"
-  region            = "us-east-1"
-  endpoint          = "https://s3.amazonaws.com"
-}
-
-# Create a project and database
-resource "dokploy_project" "main" {
-  name = "production"
-}
-
-resource "dokploy_environment" "prod" {
-  project_id = dokploy_project.main.id
-  name       = "production"
-}
-
-resource "dokploy_database" "postgres" {
-  project_id     = dokploy_project.main.id
-  environment_id = dokploy_environment.prod.id
-  name           = "app-database"
-  type           = "postgres"
-  password       = var.db_password
-  version        = "16"
-}
-
-# Configure automated backup for the database
-resource "dokploy_backup" "daily" {
-  database_id    = dokploy_database.postgres.id
-  destination_id = dokploy_destination.primary.id
-  schedule       = "0 2 * * *"  # Daily at 2 AM
-  prefix         = "daily"
-  enabled        = true
 }
 ```
 
@@ -143,31 +28,22 @@ resource "dokploy_backup" "daily" {
 
 ### Required
 
-- `access_key` (String) Access key for the storage provider.
-- `bucket` (String) Bucket name for storing backups.
-- `endpoint` (String) Endpoint URL for the storage provider.
-- `name` (String) Name of the destination.
-- `region` (String) Region where the bucket is located.
-- `secret_access_key` (String, Sensitive) Secret access key for the storage provider.
-- `storage_provider` (String) Storage provider type (e.g., 's3', 'minio').
+- `access_key` (String) Access key for the storage provider
+- `bucket` (String) Bucket name for storing backups
+- `endpoint` (String) Endpoint URL for the storage provider
+- `name` (String) Name of the destination
+- `region` (String) Region where the bucket is located
+- `secret_access_key` (String, Sensitive) Secret access key for the storage provider
+- `storage_provider` (String) Storage provider type (e.g., 's3', 'minio')
 
 ### Read-Only
 
-- `id` (String) Unique identifier for the destination.
+- `id` (String) Unique identifier for the destination
 
 ## Import
 
 Import is supported using the following syntax:
 
 ```shell
-# Destinations can be imported using their ID
 terraform import dokploy_destination.s3 "destination-id-123"
 ```
-
-## Notes
-
-- All destinations use S3-compatible APIs, so the `storage_provider` is typically set to `s3`.
-- Ensure the bucket exists before creating the destination, or configure your S3 provider to auto-create buckets.
-- Store credentials securely using Terraform variables, environment variables, or a secrets manager.
-- The endpoint should include the protocol (https://) and should not have a trailing slash.
-- For AWS S3, the endpoint is `https://s3.amazonaws.com` or the regional endpoint like `https://s3.us-west-2.amazonaws.com`.
