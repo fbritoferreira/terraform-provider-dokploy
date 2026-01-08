@@ -1,0 +1,56 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages a Dokploy application.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages a Dokploy application. Applications can be deployed from various sources including Docker images, Git repositories, and GitHub.
+
+## Example Usage
+
+### Docker Image Deployment
+
+```terraform
+resource "dokploy_project" "myproject" {
+  name = "My Application"
+}
+
+resource "dokploy_application" "nginx" {
+  name         = "nginx-app"
+  project_id   = dokploy_project.myproject.id
+  source_type  = "docker"
+  docker_image = "nginx:alpine"
+  
+  deploy_on_create = true
+}
+```
+
+### Git Repository with Dockerfile
+
+```terraform
+resource "dokploy_application" "api" {
+  name              = "api"
+  project_id        = dokploy_project.myproject.id
+  source_type       = "git"
+  custom_git_url    = "https://github.com/myorg/api.git"
+  custom_git_branch = "main"
+  build_type        = "dockerfile"
+  dockerfile_path   = "Dockerfile"
+  
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+terraform import dokploy_application.myapp "application-id-123"
+```
