@@ -167,6 +167,9 @@ func (r *DatabaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if db.EnvironmentID != "" {
 		state.EnvironmentID = types.StringValue(db.EnvironmentID)
 	}
+	if db.Version != "" {
+		state.Version = types.StringValue(db.Version)
+	}
 	// InternalPort/ExternalPort mapping
 	state.InternalPort = types.Int64Value(db.InternalPort)
 	state.ExternalPort = types.Int64Value(db.ExternalPort)
@@ -198,5 +201,40 @@ func (r *DatabaseResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 func (r *DatabaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	// Import format: <type>:<id> or just <id> (will try to detect type)
+	importID := req.ID
+
+	var dbType, dbID string
+
+	// Check if format is type:id
+	if strings.Contains(importID, ":") {
+		parts := strings.SplitN(importID, ":", 2)
+		if len(parts) == 2 {
+			dbType = parts[0]
+			dbID = parts[1]
+		}
+	} else {
+		// Try to detect database type by querying each type
+		dbID = importID
+		types := []string{"postgres", "mysql", "mariadb", "mongo", "redis"}
+
+		for _, t := range types {
+			db, err := r.client.GetDatabase(dbID, t)
+			if err == nil && db != nil && db.ID != "" {
+				dbType = t
+				break
+			}
+		}
+
+		if dbType == "" {
+			resp.Diagnostics.AddError(
+				"Unable to detect database type",
+				fmt.Sprintf("Could not determine database type for ID %s. Please use format <type>:<id> for import (e.g., postgres:%s)", dbID, dbID),
+			)
+			return
+		}
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), dbID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), dbType)...)
 }

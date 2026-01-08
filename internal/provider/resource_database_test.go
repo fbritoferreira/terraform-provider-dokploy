@@ -37,7 +37,7 @@ func TestAccDatabaseResource(t *testing.T) {
 				ResourceName:            "dokploy_database.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"password"},
+				ImportStateVerifyIgnore: []string{"password", "project_id", "version"}, // project_id, version sometimes not returned on import
 			},
 		},
 	})

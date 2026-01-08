@@ -91,8 +91,9 @@ resource "dokploy_application" "app" {
   project_id     = dokploy_project.full.id
   environment_id = dokploy_environment.staging.id
   name           = "test-app"
-  repository_url = "https://github.com/dokploy/dokploy" # Using a public repo
-  branch         = "main"
+  source_type    = "git"
+  custom_git_url = "https://github.com/dokploy/dokploy" # Using a public repo
+  custom_git_branch = "main"
   build_type     = "nixpacks"
 }
 

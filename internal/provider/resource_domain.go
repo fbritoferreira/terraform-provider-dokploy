@@ -327,5 +327,55 @@ func (r *DomainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (r *DomainResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	// Import format: <id> or <type>:<parent-id>:<id>
+	// Where type is "application" or "compose"
+	importID := req.ID
+
+	// Just set the ID and let the Read function fail if we can't find it
+	// The Read function will need to be updated to handle this case
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), importID)...)
+
+	// We can't determine application_id or compose_id from just the domain ID
+	// The user should import using format: application:<app-id>:<domain-id> or compose:<compose-id>:<domain-id>
+	// For now, set dummy values and let Read try to find it
+	// Actually, this won't work. We need a different approach.
+
+	// Try to parse the import ID
+	var parentType, parentID, domainID string
+
+	parts := strings.Split(importID, ":")
+	if len(parts) == 3 {
+		// Format: application:app-id:domain-id or compose:compose-id:domain-id
+		parentType = parts[0]
+		parentID = parts[1]
+		domainID = parts[2]
+	} else if len(parts) == 1 {
+		// Just domain ID - we need to search for it
+		// This is not ideal but we'll return an error asking for proper format
+		resp.Diagnostics.AddError(
+			"Invalid import ID format",
+			fmt.Sprintf("Please use format 'application:<app-id>:<domain-id>' or 'compose:<compose-id>:<domain-id>'. Got: %s", importID),
+		)
+		return
+	} else {
+		resp.Diagnostics.AddError(
+			"Invalid import ID format",
+			fmt.Sprintf("Expected format 'application:<app-id>:<domain-id>' or 'compose:<compose-id>:<domain-id>'. Got: %s", importID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), domainID)...)
+
+	if parentType == "application" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("application_id"), parentID)...)
+	} else if parentType == "compose" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("compose_id"), parentID)...)
+	} else {
+		resp.Diagnostics.AddError(
+			"Invalid parent type",
+			fmt.Sprintf("Parent type must be 'application' or 'compose'. Got: %s", parentType),
+		)
+		return
+	}
 }

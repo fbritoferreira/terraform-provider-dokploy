@@ -33,9 +33,10 @@ func TestAccSSHKeyResource(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:      "dokploy_ssh_key.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "dokploy_ssh_key.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"private_key"},
 			},
 		},
 	})

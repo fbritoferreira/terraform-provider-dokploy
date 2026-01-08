@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccDomainResource(t *testing.T) {
@@ -43,6 +44,18 @@ func TestAccDomainResource(t *testing.T) {
 				ResourceName:      "dokploy_domain.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					rs, ok := s.RootModule().Resources["dokploy_domain.test"]
+					if !ok {
+						return "", fmt.Errorf("resource not found")
+					}
+
+					appID := rs.Primary.Attributes["application_id"]
+					domainID := rs.Primary.ID
+
+					// Format: application:<app-id>:<domain-id>
+					return fmt.Sprintf("application:%s:%s", appID, domainID), nil
+				},
 			},
 		},
 	})
@@ -95,6 +108,8 @@ resource "dokploy_application" "test" {
   environment_id = dokploy_environment.test.id
   name           = "%s"
   build_type     = "nixpacks"
+  source_type    = "docker"
+  docker_image   = "nginx:latest"
 }
 
 resource "dokploy_domain" "test" {
@@ -127,6 +142,8 @@ resource "dokploy_application" "test" {
   environment_id = dokploy_environment.test.id
   name           = "%s"
   build_type     = "nixpacks"
+  source_type    = "docker"
+  docker_image   = "nginx:latest"
 }
 
 resource "dokploy_domain" "test" {

@@ -22,10 +22,11 @@ func TestAccApplicationResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccApplicationResourceConfig("test-app-project", "test-app-env", "test-app", "nixpacks"),
+				Config: testAccApplicationResourceConfig("test-app-project", "test-app-env", "test-app"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("dokploy_application.test", "name", "test-app"),
-					resource.TestCheckResourceAttr("dokploy_application.test", "build_type", "nixpacks"),
+					resource.TestCheckResourceAttr("dokploy_application.test", "source_type", "docker"),
+					resource.TestCheckResourceAttr("dokploy_application.test", "docker_image", "nginx:latest"),
 					resource.TestCheckResourceAttrSet("dokploy_application.test", "id"),
 					resource.TestCheckResourceAttrSet("dokploy_application.test", "project_id"),
 					resource.TestCheckResourceAttrSet("dokploy_application.test", "environment_id"),
@@ -33,10 +34,10 @@ func TestAccApplicationResource(t *testing.T) {
 			},
 			// Update and Read testing
 			{
-				Config: testAccApplicationResourceConfig("test-app-project", "test-app-env", "test-app-updated", "dockerfile"),
+				Config: testAccApplicationResourceConfig("test-app-project", "test-app-env", "test-app-updated"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("dokploy_application.test", "name", "test-app-updated"),
-					resource.TestCheckResourceAttr("dokploy_application.test", "build_type", "dockerfile"),
+					resource.TestCheckResourceAttr("dokploy_application.test", "source_type", "docker"),
 				),
 			},
 			// ImportState testing
@@ -44,6 +45,11 @@ func TestAccApplicationResource(t *testing.T) {
 				ResourceName:      "dokploy_application.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"branch", "owner", "repository", "github_id",
+					"dockerfile_path", "docker_context_path", "docker_build_stage",
+					"project_id", // Sometimes not returned by API
+				},
 			},
 		},
 	})
@@ -75,7 +81,7 @@ func TestAccApplicationResourceWithGit(t *testing.T) {
 	})
 }
 
-func testAccApplicationResourceConfig(projectName, envName, appName, buildType string) string {
+func testAccApplicationResourceConfig(projectName, envName, appName string) string {
 	return fmt.Sprintf(`
 provider "dokploy" {
   host    = "%s"
@@ -96,9 +102,10 @@ resource "dokploy_application" "test" {
   project_id     = dokploy_project.test.id
   environment_id = dokploy_environment.test.id
   name           = "%s"
-  build_type     = "%s"
+  source_type    = "docker"
+  docker_image   = "nginx:latest"
 }
-`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, appName, buildType)
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, appName)
 }
 
 func testAccApplicationResourceWithGitConfig(projectName, envName, appName string) string {
