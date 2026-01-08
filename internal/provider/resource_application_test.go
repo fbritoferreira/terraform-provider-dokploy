@@ -28,7 +28,6 @@ func TestAccApplicationResource(t *testing.T) {
 					resource.TestCheckResourceAttr("dokploy_application.test", "source_type", "docker"),
 					resource.TestCheckResourceAttr("dokploy_application.test", "docker_image", "nginx:latest"),
 					resource.TestCheckResourceAttrSet("dokploy_application.test", "id"),
-					resource.TestCheckResourceAttrSet("dokploy_application.test", "project_id"),
 					resource.TestCheckResourceAttrSet("dokploy_application.test", "environment_id"),
 				),
 			},
@@ -48,7 +47,7 @@ func TestAccApplicationResource(t *testing.T) {
 				ImportStateVerifyIgnore: []string{
 					"branch", "owner", "repository", "github_id",
 					"dockerfile_path", "docker_context_path", "docker_build_stage",
-					"project_id", // Sometimes not returned by API
+					"deploy_on_create", // Not returned by API
 				},
 			},
 		},
@@ -99,7 +98,6 @@ resource "dokploy_environment" "test" {
 }
 
 resource "dokploy_application" "test" {
-  project_id     = dokploy_project.test.id
   environment_id = dokploy_environment.test.id
   name           = "%s"
   source_type    = "docker"
@@ -126,9 +124,9 @@ resource "dokploy_environment" "test" {
 }
 
 resource "dokploy_application" "test" {
-  project_id         = dokploy_project.test.id
   environment_id     = dokploy_environment.test.id
   name               = "%s"
+  source_type        = "git"
   build_type         = "nixpacks"
   custom_git_url     = "https://github.com/dokploy/dokploy"
   custom_git_branch  = "main"

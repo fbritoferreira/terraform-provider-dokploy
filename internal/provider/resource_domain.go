@@ -318,7 +318,9 @@ func (r *DomainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	err := r.client.DeleteDomain(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "not_found") || strings.Contains(errStr, "404") {
+			// Resource already deleted, that's fine
 			return
 		}
 		resp.Diagnostics.AddError("Error deleting domain", err.Error())

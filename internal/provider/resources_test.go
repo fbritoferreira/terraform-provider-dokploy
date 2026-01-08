@@ -88,7 +88,6 @@ EOF
 }
 
 resource "dokploy_application" "app" {
-  project_id     = dokploy_project.full.id
   environment_id = dokploy_environment.staging.id
   name           = "test-app"
   source_type    = "git"

@@ -7,40 +7,335 @@ description: |-
 
 # {{.Name}} ({{.Type}})
 
-Manages a Dokploy application. Applications can be deployed from various sources including Docker images, Git repositories, and GitHub.
+Manages a Dokploy application. Applications can be deployed from various sources including:
+- **Docker images** - Deploy pre-built container images
+- **GitHub** - Deploy from GitHub repositories using GitHub Apps
+- **GitLab** - Deploy from GitLab repositories  
+- **Bitbucket** - Deploy from Bitbucket repositories
+- **Gitea** - Deploy from self-hosted Gitea instances
+- **Custom Git** - Deploy from any Git repository via SSH or HTTPS
 
 ## Example Usage
 
 ### Docker Image Deployment
+
+Deploy a pre-built Docker image from Docker Hub or a private registry.
 
 ```terraform
 resource "dokploy_project" "myproject" {
   name = "My Application"
 }
 
+resource "dokploy_environment" "production" {
+  project_id  = dokploy_project.myproject.id
+  name        = "Production"
+  description = "Production environment"
+}
+
 resource "dokploy_application" "nginx" {
-  name         = "nginx-app"
-  project_id   = dokploy_project.myproject.id
-  source_type  = "docker"
-  docker_image = "nginx:alpine"
+  name           = "nginx-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "docker"
+  docker_image   = "nginx:alpine"
+  
+  replicas         = 2
+  deploy_on_create = true
+}
+```
+
+### Docker Image with Private Registry
+
+```terraform
+resource "dokploy_application" "private_app" {
+  name           = "private-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "docker"
+  docker_image   = "registry.example.com/myorg/myapp:latest"
+  registry_url   = "registry.example.com"
+  username       = "deploy"
+  password       = var.registry_password
   
   deploy_on_create = true
 }
 ```
 
-### Git Repository with Dockerfile
+### GitHub Repository with Nixpacks
+
+Deploy from a GitHub repository using automatic build detection with Nixpacks.
 
 ```terraform
 resource "dokploy_application" "api" {
-  name              = "api"
-  project_id        = dokploy_project.myproject.id
-  source_type       = "git"
-  custom_git_url    = "https://github.com/myorg/api.git"
-  custom_git_branch = "main"
-  build_type        = "dockerfile"
-  dockerfile_path   = "Dockerfile"
+  name           = "api"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  # GitHub settings
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "api"
+  branch      = "main"
+  
+  # Build settings (Nixpacks auto-detects your project type)
+  build_type = "nixpacks"
+  
+  # Runtime settings
+  auto_deploy      = true
+  deploy_on_create = true
+  
+  # Environment variables
+  env = <<-EOT
+    NODE_ENV=production
+    DATABASE_URL=${var.database_url}
+  EOT
+}
+```
+
+### GitHub Repository with Dockerfile
+
+```terraform
+resource "dokploy_application" "web" {
+  name           = "web"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "web-frontend"
+  branch      = "main"
+  build_path  = "apps/web"  # Monorepo path
+  
+  # Dockerfile build
+  build_type          = "dockerfile"
+  dockerfile_path     = "./Dockerfile"
+  docker_context_path = "."
+  docker_build_stage  = "production"  # Multi-stage build target
+  
+  # Build arguments
+  build_args = <<-EOT
+    NODE_VERSION=20
+    BUILD_DATE=${timestamp()}
+  EOT
   
   auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### GitLab Repository
+
+```terraform
+resource "dokploy_application" "gitlab_app" {
+  name           = "gitlab-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "gitlab"
+  
+  # GitLab settings
+  gitlab_id         = "your-gitlab-integration-id"
+  gitlab_project_id = 12345
+  gitlab_owner      = "mygroup"
+  gitlab_repository = "myproject"
+  gitlab_branch     = "main"
+  
+  build_type       = "nixpacks"
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Bitbucket Repository
+
+```terraform
+resource "dokploy_application" "bitbucket_app" {
+  name           = "bitbucket-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "bitbucket"
+  
+  # Bitbucket settings
+  bitbucket_id         = "your-bitbucket-integration-id"
+  bitbucket_owner      = "myworkspace"
+  bitbucket_repository = "myrepo"
+  bitbucket_branch     = "main"
+  
+  build_type       = "nixpacks"
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Gitea Repository
+
+```terraform
+resource "dokploy_application" "gitea_app" {
+  name           = "gitea-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "gitea"
+  
+  # Gitea settings
+  gitea_id         = "your-gitea-integration-id"
+  gitea_owner      = "myorg"
+  gitea_repository = "myrepo"
+  gitea_branch     = "main"
+  
+  build_type       = "nixpacks"
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Custom Git Repository (SSH)
+
+Deploy from any Git repository using SSH authentication.
+
+```terraform
+resource "dokploy_ssh_key" "deploy_key" {
+  name        = "deploy-key"
+  private_key = var.ssh_private_key
+  public_key  = var.ssh_public_key
+}
+
+resource "dokploy_application" "custom_git" {
+  name           = "custom-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "git"
+  
+  # Custom Git settings
+  custom_git_url        = "git@github.com:myorg/private-repo.git"
+  custom_git_branch     = "main"
+  custom_git_ssh_key_id = dokploy_ssh_key.deploy_key.id
+  custom_git_build_path = "."
+  enable_submodules     = true
+  
+  build_type       = "dockerfile"
+  dockerfile_path  = "./Dockerfile"
+  
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Static Site Deployment
+
+```terraform
+resource "dokploy_application" "docs" {
+  name           = "documentation"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "docs"
+  branch      = "main"
+  
+  # Static build
+  build_type        = "static"
+  publish_directory = "build"
+  is_static_spa     = true  # Enable SPA routing
+  
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Application with Resource Limits
+
+```terraform
+resource "dokploy_application" "resource_limited" {
+  name           = "limited-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "docker"
+  docker_image   = "myapp:latest"
+  
+  # Resource limits
+  memory_limit       = 536870912   # 512MB
+  memory_reservation = 268435456   # 256MB
+  cpu_limit          = 1000000000  # 1 CPU core
+  cpu_reservation    = 500000000   # 0.5 CPU core
+  
+  replicas = 3
+  
+  deploy_on_create = true
+}
+```
+
+### Application with Preview Deployments
+
+Enable automatic preview deployments for pull requests.
+
+```terraform
+resource "dokploy_application" "with_previews" {
+  name           = "app-with-previews"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "web"
+  branch      = "main"
+  
+  build_type = "nixpacks"
+  
+  # Preview deployment settings
+  preview_deployments_enabled = true
+  preview_wildcard            = "*.preview.example.com"
+  preview_port                = 3000
+  preview_https               = true
+  preview_certificate_type    = "letsencrypt"
+  preview_limit               = 5
+  
+  preview_env = <<-EOT
+    NODE_ENV=preview
+    API_URL=https://api-preview.example.com
+  EOT
+  
+  auto_deploy      = true
+  deploy_on_create = true
+}
+```
+
+### Application with Rollback Support
+
+```terraform
+resource "dokploy_application" "with_rollback" {
+  name           = "rollback-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "api"
+  branch      = "main"
+  
+  build_type = "dockerfile"
+  
+  # Enable rollback
+  rollback_active      = true
+  rollback_registry_id = dokploy_registry.internal.id
+  
+  deploy_on_create = true
+}
+```
+
+### Application with Remote Build Server
+
+Build on a dedicated build server and push to a registry.
+
+```terraform
+resource "dokploy_application" "remote_build" {
+  name           = "remote-build-app"
+  environment_id = dokploy_environment.production.id
+  source_type    = "github"
+  
+  github_id   = "your-github-app-installation-id"
+  owner       = "myorg"
+  repository  = "heavy-build"
+  branch      = "main"
+  
+  build_type = "dockerfile"
+  
+  # Remote build configuration
+  build_server_id   = dokploy_server.build.id
+  build_registry_id = dokploy_registry.internal.id
+  
   deploy_on_create = true
 }
 ```
