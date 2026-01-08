@@ -27,6 +27,7 @@ func TestAccRedisResource(t *testing.T) {
 					resource.TestCheckResourceAttr("dokploy_redis.test", "name", "test-redis"),
 					resource.TestCheckResourceAttrSet("dokploy_redis.test", "id"),
 					resource.TestCheckResourceAttrSet("dokploy_redis.test", "environment_id"),
+					resource.TestCheckResourceAttr("dokploy_redis.test", "app_name_prefix", "testredisapp"),
 					resource.TestCheckResourceAttrSet("dokploy_redis.test", "app_name"),
 				),
 			},
@@ -43,13 +44,13 @@ func TestAccRedisResource(t *testing.T) {
 				ResourceName:            "dokploy_redis.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"database_password"}, // Password not returned by API.
+				ImportStateVerifyIgnore: []string{"database_password", "app_name_prefix"}, // Password not returned by API, prefix is config-only.
 			},
 		},
 	})
 }
 
-func testAccRedisResourceConfig(projectName, envName, redisName, appName string) string {
+func testAccRedisResourceConfig(projectName, envName, redisName, appNamePrefix string) string {
 	return fmt.Sprintf(`
 provider "dokploy" {
   host    = "%s"
@@ -68,14 +69,14 @@ resource "dokploy_environment" "test" {
 
 resource "dokploy_redis" "test" {
   name              = "%s"
-  app_name          = "%s"
+  app_name_prefix   = "%s"
   database_password = "test_redis_password_123"
   environment_id    = dokploy_environment.test.id
 }
-`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, redisName, appName)
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, redisName, appNamePrefix)
 }
 
-func testAccRedisResourceConfigWithDescription(projectName, envName, redisName, appName string, description string) string {
+func testAccRedisResourceConfigWithDescription(projectName, envName, redisName, appNamePrefix string, description string) string {
 	return fmt.Sprintf(`
 provider "dokploy" {
   host    = "%s"
@@ -94,10 +95,10 @@ resource "dokploy_environment" "test" {
 
 resource "dokploy_redis" "test" {
   name              = "%s"
-  app_name          = "%s"
+  app_name_prefix   = "%s"
   database_password = "test_redis_password_123"
   environment_id    = dokploy_environment.test.id
   description       = "%s"
 }
-`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, redisName, appName, description)
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, redisName, appNamePrefix, description)
 }

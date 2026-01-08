@@ -26,7 +26,7 @@ resource "dokploy_environment" "production" {
 
 resource "dokploy_redis" "cache" {
   name              = "app-cache"
-  app_name          = "redis-cache"
+  app_name_prefix   = "redis-cache"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
 }
@@ -37,7 +37,7 @@ resource "dokploy_redis" "cache" {
 ```terraform
 resource "dokploy_redis" "cache" {
   name              = "app-cache"
-  app_name          = "redis-cache"
+  app_name_prefix   = "redis-cache"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   docker_image      = "redis:7-alpine"
@@ -50,7 +50,7 @@ resource "dokploy_redis" "cache" {
 ```terraform
 resource "dokploy_redis" "cache" {
   name              = "production-cache"
-  app_name          = "prod-redis"
+  app_name_prefix   = "prod-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   
@@ -70,7 +70,7 @@ resource "dokploy_redis" "cache" {
 # Redis instance accessible from outside the Docker network
 resource "dokploy_redis" "external" {
   name              = "external-redis"
-  app_name          = "ext-redis"
+  app_name_prefix   = "ext-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   external_port     = 6379
@@ -84,7 +84,7 @@ resource "dokploy_redis" "external" {
 ```terraform
 resource "dokploy_redis" "ha_cache" {
   name              = "ha-cache"
-  app_name          = "ha-redis"
+  app_name_prefix   = "ha-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   replicas          = 3
@@ -98,7 +98,7 @@ resource "dokploy_redis" "ha_cache" {
 ```terraform
 resource "dokploy_redis" "custom" {
   name              = "custom-redis"
-  app_name          = "custom-redis"
+  app_name_prefix   = "custom-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   
@@ -119,7 +119,7 @@ resource "dokploy_redis" "custom" {
 ```terraform
 resource "dokploy_redis" "remote_cache" {
   name              = "remote-cache"
-  app_name          = "remote-redis"
+  app_name_prefix   = "remote-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.production.id
   server_id         = dokploy_server.database_server.id
@@ -144,7 +144,7 @@ resource "dokploy_environment" "prod" {
 # Redis for caching
 resource "dokploy_redis" "cache" {
   name              = "app-cache"
-  app_name          = "webapp-redis"
+  app_name_prefix   = "webapp-redis"
   database_password = var.redis_password
   environment_id    = dokploy_environment.prod.id
   memory_limit      = "256M"
@@ -180,7 +180,7 @@ resource "dokploy_application" "api" {
 
 ### Required
 
-- `app_name` (String) Application name prefix for the Redis instance. Dokploy will append a random suffix.
+- `app_name_prefix` (String) Application name prefix for the Redis instance. Dokploy will append a random suffix to create the final `app_name`.
 - `database_password` (String, Sensitive) Password for the Redis database.
 - `environment_id` (String) ID of the environment to deploy the Redis instance in.
 - `name` (String) Name of the Redis instance.
@@ -201,6 +201,7 @@ resource "dokploy_application" "api" {
 
 ### Read-Only
 
+- `app_name` (String) The actual application name used by Dokploy (includes server-generated suffix).
 - `application_status` (String) Current status of the Redis application.
 - `id` (String) Unique identifier for the Redis instance.
 
@@ -213,9 +214,14 @@ Import is supported using the following syntax:
 terraform import dokploy_redis.cache "redis-id-123"
 ```
 
+~> **Note:** When importing, you must set `app_name_prefix` in your configuration. Since the prefix cannot be determined from the imported state, set it to a placeholder value or the base part of the `app_name` before the suffix.
+
 ## Notes
 
-- The `app_name` you provide will have a random suffix appended by Dokploy (e.g., `myredis` becomes `myredis-abc123`).
+- The `app_name_prefix` you provide will have a random suffix appended by Dokploy to create the final `app_name` (e.g., `myredis` becomes `myredis-abc123`).
+- The computed `app_name` attribute contains the full name with the server-generated suffix. Use this when referencing the Redis instance from other services.
+- Changing `app_name_prefix` will force recreation of the Redis instance.
 - Redis password is required and should be stored securely using Terraform variables or a secrets manager.
-- When connecting from other services in the same Dokploy environment, use the internal Docker network hostname.
+- When connecting from other services in the same Dokploy environment, use the internal Docker network hostname (the `app_name`).
 - The default Redis image is `redis:8`. You can specify a different version using the `docker_image` attribute.
+

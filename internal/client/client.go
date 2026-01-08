@@ -3,12 +3,16 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// ErrNotFound is returned when a resource is not found (404).
+var ErrNotFound = errors.New("resource not found")
 
 // DokployClient holds connection details.
 type DokployClient struct {
@@ -60,6 +64,9 @@ func (c *DokployClient) doRequest(method, endpoint string, body interface{}) ([]
 
 	// fmt.Fprintf(os.Stderr, "DEBUG RESPONSE [%s]: %s\n", endpoint, string(respBytes))
 
+	if resp.StatusCode == 404 {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, string(respBytes))
+	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(respBytes))
 	}
@@ -2400,6 +2407,9 @@ func (c *DokployClient) CreateServer(server Server) (*Server, error) {
 	if server.Description != "" {
 		payload["description"] = server.Description
 	}
+	if server.Command != "" {
+		payload["command"] = server.Command
+	}
 
 	resp, err := c.doRequest("POST", "server.create", payload)
 	if err != nil {
@@ -2416,20 +2426,15 @@ func (c *DokployClient) CreateServer(server Server) (*Server, error) {
 // UpdateServer updates an existing server.
 func (c *DokployClient) UpdateServer(server Server) (*Server, error) {
 	payload := map[string]interface{}{
-		"serverId":   server.ID,
-		"name":       server.Name,
-		"ipAddress":  server.IPAddress,
-		"port":       server.Port,
-		"username":   server.Username,
-		"sshKeyId":   server.SSHKeyID,
-		"serverType": server.ServerType,
-	}
-
-	if server.Description != "" {
-		payload["description"] = server.Description
-	}
-	if server.Command != "" {
-		payload["command"] = server.Command
+		"serverId":    server.ID,
+		"name":        server.Name,
+		"ipAddress":   server.IPAddress,
+		"port":        server.Port,
+		"username":    server.Username,
+		"sshKeyId":    server.SSHKeyID,
+		"serverType":  server.ServerType,
+		"description": server.Description,
+		"command":     server.Command,
 	}
 
 	resp, err := c.doRequest("POST", "server.update", payload)
@@ -2488,6 +2493,7 @@ func (c *DokployClient) CreateRedis(redis Redis) (*Redis, error) {
 		"environmentId":    redis.EnvironmentID,
 	}
 
+	// Include optional fields if set.
 	if redis.DockerImage != "" {
 		payload["dockerImage"] = redis.DockerImage
 	}
@@ -2496,6 +2502,30 @@ func (c *DokployClient) CreateRedis(redis Redis) (*Redis, error) {
 	}
 	if redis.ServerID != "" {
 		payload["serverId"] = redis.ServerID
+	}
+	if redis.Command != "" {
+		payload["command"] = redis.Command
+	}
+	if redis.Env != "" {
+		payload["env"] = redis.Env
+	}
+	if redis.MemoryReservation != "" {
+		payload["memoryReservation"] = redis.MemoryReservation
+	}
+	if redis.MemoryLimit != "" {
+		payload["memoryLimit"] = redis.MemoryLimit
+	}
+	if redis.CPUReservation != "" {
+		payload["cpuReservation"] = redis.CPUReservation
+	}
+	if redis.CPULimit != "" {
+		payload["cpuLimit"] = redis.CPULimit
+	}
+	if redis.ExternalPort > 0 {
+		payload["externalPort"] = redis.ExternalPort
+	}
+	if redis.Replicas > 0 {
+		payload["replicas"] = redis.Replicas
 	}
 
 	resp, err := c.doRequest("POST", "redis.create", payload)

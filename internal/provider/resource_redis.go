@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -14,32 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
-
-// useStateIfServerModifies is a plan modifier that keeps the state value
-// because the server modifies the user-provided value (e.g., adding a suffix).
-type useStateIfServerModifies struct{}
-
-func (m useStateIfServerModifies) Description(_ context.Context) string {
-	return "Use state value because server modifies the user-provided value."
-}
-
-func (m useStateIfServerModifies) MarkdownDescription(_ context.Context) string {
-	return "Use state value because server modifies the user-provided value."
-}
-
-func (m useStateIfServerModifies) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	// If there's no state (new resource), let the plan value through.
-	if req.StateValue.IsNull() {
-		return
-	}
-
-	// If state exists, use the state value since the server modified it.
-	resp.PlanValue = req.StateValue
-}
-
-func UseStateIfServerModifies() planmodifier.String {
-	return useStateIfServerModifies{}
-}
 
 var _ resource.Resource = &RedisResource{}
 var _ resource.ResourceWithImportState = &RedisResource{}
@@ -55,6 +29,7 @@ type RedisResource struct {
 type RedisResourceModel struct {
 	ID                types.String `tfsdk:"id"`
 	Name              types.String `tfsdk:"name"`
+	AppNamePrefix     types.String `tfsdk:"app_name_prefix"`
 	AppName           types.String `tfsdk:"app_name"`
 	Description       types.String `tfsdk:"description"`
 	DatabasePassword  types.String `tfsdk:"database_password"`
@@ -91,11 +66,18 @@ func (r *RedisResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Required:    true,
 				Description: "Name of the Redis instance.",
 			},
-			"app_name": schema.StringAttribute{
+			"app_name_prefix": schema.StringAttribute{
 				Required:    true,
-				Description: "Application name prefix for the Redis instance. Dokploy will append a random suffix.",
+				Description: "Application name prefix for the Redis instance. Dokploy will append a random suffix to create the final app_name.",
 				PlanModifiers: []planmodifier.String{
-					UseStateIfServerModifies(),
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"app_name": schema.StringAttribute{
+				Computed:    true,
+				Description: "The actual application name used by Dokploy (includes server-generated suffix).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"description": schema.StringAttribute{
@@ -198,7 +180,7 @@ func (r *RedisResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	redis := client.Redis{
 		Name:             plan.Name.ValueString(),
-		AppName:          plan.AppName.ValueString(),
+		AppName:          plan.AppNamePrefix.ValueString(),
 		Description:      plan.Description.ValueString(),
 		DatabasePassword: plan.DatabasePassword.ValueString(),
 		DockerImage:      plan.DockerImage.ValueString(),
@@ -215,8 +197,8 @@ func (r *RedisResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// Set required and computed fields.
 	plan.ID = types.StringValue(createdRedis.RedisID)
 	plan.Name = types.StringValue(createdRedis.Name)
-	// Don't update app_name - server modifies it but we keep the plan value.
-	// The actual value will be fetched in Read.
+	// Store the server-modified app_name so state matches the remote resource.
+	plan.AppName = types.StringValue(createdRedis.AppName)
 	plan.EnvironmentID = types.StringValue(createdRedis.EnvironmentID)
 	plan.ApplicationStatus = types.StringValue(createdRedis.ApplicationStatus)
 
@@ -273,7 +255,7 @@ func (r *RedisResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	redis, err := r.client.GetRedis(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		if errors.Is(err, client.ErrNotFound) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -282,6 +264,7 @@ func (r *RedisResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 
 	// Update required and computed fields.
+	// Note: AppNamePrefix is not updated from server - it's user-provided config.
 	state.Name = types.StringValue(redis.Name)
 	state.AppName = types.StringValue(redis.AppName)
 	state.EnvironmentID = types.StringValue(redis.EnvironmentID)
@@ -360,8 +343,10 @@ func (r *RedisResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 
 	// Update required and computed fields.
+	// Note: AppNamePrefix is not updated - it's user-provided config that triggers replace.
 	plan.Name = types.StringValue(updatedRedis.Name)
-	// Don't update app_name - keep the plan value since server may have modified it.
+	// Update the computed app_name from server.
+	plan.AppName = types.StringValue(updatedRedis.AppName)
 	plan.ApplicationStatus = types.StringValue(updatedRedis.ApplicationStatus)
 
 	// Update computed fields.
@@ -412,7 +397,7 @@ func (r *RedisResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	err := r.client.DeleteRedis(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		if errors.Is(err, client.ErrNotFound) {
 			return
 		}
 		resp.Diagnostics.AddError("Error deleting Redis instance", err.Error())

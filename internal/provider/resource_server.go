@@ -2,16 +2,18 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -84,6 +86,9 @@ func (r *ServerResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"server_type": schema.StringAttribute{
 				Required:    true,
 				Description: "Type of server: 'deploy' or 'build'.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("deploy", "build"),
+				},
 			},
 			"server_status": schema.StringAttribute{
 				Computed:    true,
@@ -129,6 +134,7 @@ func (r *ServerResource) Create(ctx context.Context, req resource.CreateRequest,
 		Username:    plan.Username.ValueString(),
 		SSHKeyID:    plan.SSHKeyID.ValueString(),
 		ServerType:  plan.ServerType.ValueString(),
+		Command:     plan.Command.ValueString(),
 	}
 
 	createdServer, err := r.client.CreateServer(server)
@@ -162,7 +168,7 @@ func (r *ServerResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	server, err := r.client.GetServer(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		if errors.Is(err, client.ErrNotFound) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -234,7 +240,7 @@ func (r *ServerResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	err := r.client.DeleteServer(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		if errors.Is(err, client.ErrNotFound) {
 			return
 		}
 		resp.Diagnostics.AddError("Error deleting server", err.Error())
