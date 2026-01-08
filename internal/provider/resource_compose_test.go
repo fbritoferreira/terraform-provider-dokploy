@@ -26,7 +26,6 @@ func TestAccComposeResource(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("dokploy_compose.test", "name", "test-compose"),
 					resource.TestCheckResourceAttrSet("dokploy_compose.test", "id"),
-					resource.TestCheckResourceAttrSet("dokploy_compose.test", "project_id"),
 					resource.TestCheckResourceAttrSet("dokploy_compose.test", "environment_id"),
 					resource.TestCheckResourceAttr("dokploy_compose.test", "deploy_on_create", "false"),
 				),
@@ -43,7 +42,7 @@ func TestAccComposeResource(t *testing.T) {
 				ResourceName:            "dokploy_compose.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"deploy_on_create", "project_id"}, // project_id sometimes not returned on import
+				ImportStateVerifyIgnore: []string{"deploy_on_create", "branch", "trigger_type"}, // deploy_on_create is write-only; branch/trigger_type have API defaults that don't apply to raw source type in this test
 			},
 		},
 	})
@@ -67,7 +66,6 @@ resource "dokploy_environment" "test" {
 }
 
 resource "dokploy_compose" "test" {
-  project_id     = dokploy_project.test.id
   environment_id = dokploy_environment.test.id
   name           = "%s"
   source_type    = "raw"

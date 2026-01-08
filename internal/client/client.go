@@ -271,6 +271,7 @@ type Application struct {
 	CustomGitBuildPath string `json:"customGitBuildPath"`
 	EnableSubmodules   bool   `json:"enableSubmodules"`
 	WatchPaths         string `json:"watchPaths"` // Stored as JSON array string
+	CleanCache         bool   `json:"cleanCache"`
 
 	// GitHub provider settings (application.saveGithubProvider)
 	Repository  string `json:"repository"`
@@ -280,11 +281,35 @@ type Application struct {
 	GithubId    string `json:"githubId"`
 	TriggerType string `json:"triggerType"` // push, tag
 
+	// GitLab provider settings (application.saveGitlabProvider)
+	GitlabId            string `json:"gitlabId"`
+	GitlabProjectId     int64  `json:"gitlabProjectId"`
+	GitlabRepository    string `json:"gitlabRepository"`
+	GitlabOwner         string `json:"gitlabOwner"`
+	GitlabBranch        string `json:"gitlabBranch"`
+	GitlabBuildPath     string `json:"gitlabBuildPath"`
+	GitlabPathNamespace string `json:"gitlabPathNamespace"`
+
+	// Bitbucket provider settings (application.saveBitbucketProvider)
+	BitbucketId         string `json:"bitbucketId"`
+	BitbucketRepository string `json:"bitbucketRepository"`
+	BitbucketOwner      string `json:"bitbucketOwner"`
+	BitbucketBranch     string `json:"bitbucketBranch"`
+	BitbucketBuildPath  string `json:"bitbucketBuildPath"`
+
+	// Gitea provider settings (application.saveGiteaProvider)
+	GiteaId         string `json:"giteaId"`
+	GiteaRepository string `json:"giteaRepository"`
+	GiteaOwner      string `json:"giteaOwner"`
+	GiteaBranch     string `json:"giteaBranch"`
+	GiteaBuildPath  string `json:"giteaBuildPath"`
+
 	// Docker provider settings (application.saveDockerProvider)
 	DockerImage string `json:"dockerImage"`
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	RegistryUrl string `json:"registryUrl"`
+	RegistryId  string `json:"registryId"`
 
 	// Build type settings (application.saveBuildType)
 	BuildType         string `json:"buildType"` // dockerfile, heroku_buildpacks, paketo_buildpacks, nixpacks, static, railpack
@@ -293,6 +318,9 @@ type Application struct {
 	DockerBuildStage  string `json:"dockerBuildStage"`
 	PublishDirectory  string `json:"publishDirectory"`
 	Dockerfile        string `json:"dockerfileContent"` // Raw Dockerfile content for drop source
+	HerokuVersion     string `json:"herokuVersion"`
+	RailpackVersion   string `json:"railpackVersion"`
+	IsStaticSpa       bool   `json:"isStaticSpa"`
 
 	// Environment settings (application.saveEnvironment)
 	Env           string `json:"env"`
@@ -308,8 +336,37 @@ type Application struct {
 	CpuLimit          *int64                 `json:"cpuLimit"`
 	CpuReservation    *int64                 `json:"cpuReservation"`
 	Command           string                 `json:"command"`
+	Args              string                 `json:"args"`
 	EntryPoint        string                 `json:"entrypoint"`
 	HealthCheckSwarm  map[string]interface{} `json:"healthCheckSwarm"`
+
+	// Preview deployments (application.update)
+	IsPreviewDeploymentsActive            bool   `json:"isPreviewDeploymentsActive"`
+	PreviewEnv                            string `json:"previewEnv"`
+	PreviewBuildArgs                      string `json:"previewBuildArgs"`
+	PreviewBuildSecrets                   string `json:"previewBuildSecrets"`
+	PreviewLabels                         string `json:"previewLabels"`
+	PreviewWildcard                       string `json:"previewWildcard"`
+	PreviewPort                           int64  `json:"previewPort"`
+	PreviewHttps                          bool   `json:"previewHttps"`
+	PreviewPath                           string `json:"previewPath"`
+	PreviewCertificateType                string `json:"previewCertificateType"`
+	PreviewCustomCertResolver             string `json:"previewCustomCertResolver"`
+	PreviewLimit                          int64  `json:"previewLimit"`
+	PreviewRequireCollaboratorPermissions bool   `json:"previewRequireCollaboratorPermissions"`
+
+	// Rollback configuration
+	RollbackActive     bool   `json:"rollbackActive"`
+	RollbackRegistryId string `json:"rollbackRegistryId"`
+
+	// Build server configuration
+	BuildServerId   string `json:"buildServerId"`
+	BuildRegistryId string `json:"buildRegistryId"`
+
+	// Display settings
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle"`
+	Enabled  bool   `json:"enabled"`
 
 	// Application status
 	ApplicationStatus string `json:"applicationStatus"` // idle, running, done, error
@@ -609,6 +666,152 @@ func (c *DokployClient) SaveGithubProvider(input SaveGithubProviderInput) error 
 	return err
 }
 
+// SaveGitlabProviderInput contains all the fields for the saveGitlabProvider endpoint.
+type SaveGitlabProviderInput struct {
+	ApplicationID       string
+	GitlabId            string
+	GitlabProjectId     int64
+	GitlabRepository    string
+	GitlabOwner         string
+	GitlabBranch        string
+	GitlabBuildPath     string
+	GitlabPathNamespace string
+	WatchPaths          []string
+	EnableSubmodules    bool
+}
+
+// SaveGitlabProvider configures the GitLab provider settings for an application.
+// Corresponds to application.saveGitlabProvider endpoint.
+func (c *DokployClient) SaveGitlabProvider(input SaveGitlabProviderInput) error {
+	payload := map[string]interface{}{
+		"applicationId":    input.ApplicationID,
+		"enableSubmodules": input.EnableSubmodules,
+	}
+
+	if input.GitlabId != "" {
+		payload["gitlabId"] = input.GitlabId
+	} else {
+		payload["gitlabId"] = nil
+	}
+
+	if input.GitlabProjectId != 0 {
+		payload["gitlabProjectId"] = input.GitlabProjectId
+	}
+	if input.GitlabRepository != "" {
+		payload["gitlabRepository"] = input.GitlabRepository
+	}
+	if input.GitlabOwner != "" {
+		payload["gitlabOwner"] = input.GitlabOwner
+	}
+	if input.GitlabBranch != "" {
+		payload["gitlabBranch"] = input.GitlabBranch
+	}
+	if input.GitlabBuildPath != "" {
+		payload["gitlabBuildPath"] = input.GitlabBuildPath
+	}
+	if input.GitlabPathNamespace != "" {
+		payload["gitlabPathNamespace"] = input.GitlabPathNamespace
+	}
+	if len(input.WatchPaths) > 0 {
+		payload["watchPaths"] = input.WatchPaths
+	}
+
+	_, err := c.doRequest("POST", "application.saveGitlabProvider", payload)
+	return err
+}
+
+// SaveBitbucketProviderInput contains all the fields for the saveBitbucketProvider endpoint.
+type SaveBitbucketProviderInput struct {
+	ApplicationID       string
+	BitbucketId         string
+	BitbucketRepository string
+	BitbucketOwner      string
+	BitbucketBranch     string
+	BitbucketBuildPath  string
+	WatchPaths          []string
+	EnableSubmodules    bool
+}
+
+// SaveBitbucketProvider configures the Bitbucket provider settings for an application.
+// Corresponds to application.saveBitbucketProvider endpoint.
+func (c *DokployClient) SaveBitbucketProvider(input SaveBitbucketProviderInput) error {
+	payload := map[string]interface{}{
+		"applicationId":    input.ApplicationID,
+		"enableSubmodules": input.EnableSubmodules,
+	}
+
+	if input.BitbucketId != "" {
+		payload["bitbucketId"] = input.BitbucketId
+	} else {
+		payload["bitbucketId"] = nil
+	}
+
+	if input.BitbucketRepository != "" {
+		payload["bitbucketRepository"] = input.BitbucketRepository
+	}
+	if input.BitbucketOwner != "" {
+		payload["bitbucketOwner"] = input.BitbucketOwner
+	}
+	if input.BitbucketBranch != "" {
+		payload["bitbucketBranch"] = input.BitbucketBranch
+	}
+	if input.BitbucketBuildPath != "" {
+		payload["bitbucketBuildPath"] = input.BitbucketBuildPath
+	}
+	if len(input.WatchPaths) > 0 {
+		payload["watchPaths"] = input.WatchPaths
+	}
+
+	_, err := c.doRequest("POST", "application.saveBitbucketProvider", payload)
+	return err
+}
+
+// SaveGiteaProviderInput contains all the fields for the saveGiteaProvider endpoint.
+type SaveGiteaProviderInput struct {
+	ApplicationID    string
+	GiteaId          string
+	GiteaRepository  string
+	GiteaOwner       string
+	GiteaBranch      string
+	GiteaBuildPath   string
+	WatchPaths       []string
+	EnableSubmodules bool
+}
+
+// SaveGiteaProvider configures the Gitea provider settings for an application.
+// Corresponds to application.saveGiteaProvider endpoint.
+func (c *DokployClient) SaveGiteaProvider(input SaveGiteaProviderInput) error {
+	payload := map[string]interface{}{
+		"applicationId":    input.ApplicationID,
+		"enableSubmodules": input.EnableSubmodules,
+	}
+
+	if input.GiteaId != "" {
+		payload["giteaId"] = input.GiteaId
+	} else {
+		payload["giteaId"] = nil
+	}
+
+	if input.GiteaRepository != "" {
+		payload["giteaRepository"] = input.GiteaRepository
+	}
+	if input.GiteaOwner != "" {
+		payload["giteaOwner"] = input.GiteaOwner
+	}
+	if input.GiteaBranch != "" {
+		payload["giteaBranch"] = input.GiteaBranch
+	}
+	if input.GiteaBuildPath != "" {
+		payload["giteaBuildPath"] = input.GiteaBuildPath
+	}
+	if len(input.WatchPaths) > 0 {
+		payload["watchPaths"] = input.WatchPaths
+	}
+
+	_, err := c.doRequest("POST", "application.saveGiteaProvider", payload)
+	return err
+}
+
 // SaveDockerProviderInput contains all the fields for the saveDockerProvider endpoint.
 type SaveDockerProviderInput struct {
 	ApplicationID string
@@ -616,6 +819,7 @@ type SaveDockerProviderInput struct {
 	Username      string
 	Password      string
 	RegistryUrl   string
+	RegistryId    string
 }
 
 // SaveDockerProvider configures the docker provider settings for an application.
@@ -636,6 +840,9 @@ func (c *DokployClient) SaveDockerProvider(input SaveDockerProviderInput) error 
 	}
 	if input.RegistryUrl != "" {
 		payload["registryUrl"] = input.RegistryUrl
+	}
+	if input.RegistryId != "" {
+		payload["registryId"] = input.RegistryId
 	}
 
 	_, err := c.doRequest("POST", "application.saveDockerProvider", payload)
@@ -678,19 +885,74 @@ func (c *DokployClient) SaveEnvironment(input SaveEnvironmentInput) error {
 // --- Compose ---
 
 type Compose struct {
-	ID                string   `json:"composeId"`
-	Name              string   `json:"name"`
-	ProjectID         string   `json:"projectId"`
-	EnvironmentID     string   `json:"environmentId"`
-	ComposeFile       string   `json:"composeFile"`
-	SourceType        string   `json:"sourceType"`
-	CustomGitUrl      string   `json:"customGitUrl"`
-	CustomGitBranch   string   `json:"customGitBranch"`
-	CustomGitSSHKeyId string   `json:"customGitSSHKeyId"`
-	ComposePath       string   `json:"composePath"`
-	AutoDeploy        bool     `json:"autoDeploy"`
-	Domains           []Domain `json:"domains"`
-	ServerID          string   `json:"serverId"`
+	ID            string `json:"composeId"`
+	Name          string `json:"name"`
+	AppName       string `json:"appName"`
+	Description   string `json:"description"`
+	ProjectID     string `json:"projectId"`
+	EnvironmentID string `json:"environmentId"`
+	ServerID      string `json:"serverId"`
+
+	// Compose file content (for raw source type)
+	ComposeFile string `json:"composeFile"`
+	ComposePath string `json:"composePath"`
+
+	// Source configuration
+	SourceType string `json:"sourceType"` // github, gitlab, bitbucket, git, raw
+
+	// Custom Git provider settings
+	CustomGitUrl       string `json:"customGitUrl"`
+	CustomGitBranch    string `json:"customGitBranch"`
+	CustomGitSSHKeyId  string `json:"customGitSSHKeyId"`
+	CustomGitBuildPath string `json:"customGitBuildPath"`
+	EnableSubmodules   bool   `json:"enableSubmodules"`
+	WatchPaths         string `json:"watchPaths"`
+
+	// GitHub provider settings
+	Repository  string `json:"repository"`
+	Branch      string `json:"branch"`
+	Owner       string `json:"owner"`
+	GithubId    string `json:"githubId"`
+	TriggerType string `json:"triggerType"`
+
+	// GitLab provider settings
+	GitlabId            string `json:"gitlabId"`
+	GitlabProjectId     int64  `json:"gitlabProjectId"`
+	GitlabRepository    string `json:"gitlabRepository"`
+	GitlabOwner         string `json:"gitlabOwner"`
+	GitlabBranch        string `json:"gitlabBranch"`
+	GitlabBuildPath     string `json:"gitlabBuildPath"`
+	GitlabPathNamespace string `json:"gitlabPathNamespace"`
+
+	// Bitbucket provider settings
+	BitbucketId         string `json:"bitbucketId"`
+	BitbucketRepository string `json:"bitbucketRepository"`
+	BitbucketOwner      string `json:"bitbucketOwner"`
+	BitbucketBranch     string `json:"bitbucketBranch"`
+	BitbucketBuildPath  string `json:"bitbucketBuildPath"`
+
+	// Gitea provider settings
+	GiteaId         string `json:"giteaId"`
+	GiteaRepository string `json:"giteaRepository"`
+	GiteaOwner      string `json:"giteaOwner"`
+	GiteaBranch     string `json:"giteaBranch"`
+	GiteaBuildPath  string `json:"giteaBuildPath"`
+
+	// Runtime configuration
+	AutoDeploy bool `json:"autoDeploy"`
+	Replicas   int  `json:"replicas"`
+
+	// Environment
+	Env string `json:"env"`
+
+	// Status
+	ComposeStatus string `json:"composeStatus"`
+
+	// Domains
+	Domains []Domain `json:"domains"`
+
+	// Timestamps
+	CreatedAt string `json:"createdAt"`
 }
 
 func (c *DokployClient) CreateCompose(comp Compose) (*Compose, error) {

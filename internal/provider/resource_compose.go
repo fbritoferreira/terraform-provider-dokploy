@@ -6,12 +6,15 @@ import (
 	"strings"
 
 	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -27,19 +30,65 @@ type ComposeResource struct {
 }
 
 type ComposeResourceModel struct {
-	ID                 types.String `tfsdk:"id"`
-	ProjectID          types.String `tfsdk:"project_id"`
-	EnvironmentID      types.String `tfsdk:"environment_id"`
-	Name               types.String `tfsdk:"name"`
+	ID            types.String `tfsdk:"id"`
+	EnvironmentID types.String `tfsdk:"environment_id"`
+	Name          types.String `tfsdk:"name"`
+	AppName       types.String `tfsdk:"app_name"`
+	Description   types.String `tfsdk:"description"`
+	ServerID      types.String `tfsdk:"server_id"`
+
+	// Compose file
 	ComposeFileContent types.String `tfsdk:"compose_file_content"`
-	SourceType         types.String `tfsdk:"source_type"`
+	ComposePath        types.String `tfsdk:"compose_path"`
+
+	// Source configuration
+	SourceType types.String `tfsdk:"source_type"`
+
+	// Custom Git provider settings (source_type = "git")
 	CustomGitUrl       types.String `tfsdk:"custom_git_url"`
 	CustomGitBranch    types.String `tfsdk:"custom_git_branch"`
 	CustomGitSSHKeyID  types.String `tfsdk:"custom_git_ssh_key_id"`
-	ComposePath        types.String `tfsdk:"compose_path"`
-	AutoDeploy         types.Bool   `tfsdk:"auto_deploy"`
-	DeployOnCreate     types.Bool   `tfsdk:"deploy_on_create"`
-	ServerID           types.String `tfsdk:"server_id"`
+	CustomGitBuildPath types.String `tfsdk:"custom_git_build_path"`
+	EnableSubmodules   types.Bool   `tfsdk:"enable_submodules"`
+
+	// GitHub provider settings (source_type = "github")
+	Repository  types.String `tfsdk:"repository"`
+	Branch      types.String `tfsdk:"branch"`
+	Owner       types.String `tfsdk:"owner"`
+	GithubId    types.String `tfsdk:"github_id"`
+	TriggerType types.String `tfsdk:"trigger_type"`
+
+	// GitLab provider settings (source_type = "gitlab")
+	GitlabId            types.String `tfsdk:"gitlab_id"`
+	GitlabProjectId     types.Int64  `tfsdk:"gitlab_project_id"`
+	GitlabRepository    types.String `tfsdk:"gitlab_repository"`
+	GitlabOwner         types.String `tfsdk:"gitlab_owner"`
+	GitlabBranch        types.String `tfsdk:"gitlab_branch"`
+	GitlabBuildPath     types.String `tfsdk:"gitlab_build_path"`
+	GitlabPathNamespace types.String `tfsdk:"gitlab_path_namespace"`
+
+	// Bitbucket provider settings (source_type = "bitbucket")
+	BitbucketId         types.String `tfsdk:"bitbucket_id"`
+	BitbucketRepository types.String `tfsdk:"bitbucket_repository"`
+	BitbucketOwner      types.String `tfsdk:"bitbucket_owner"`
+	BitbucketBranch     types.String `tfsdk:"bitbucket_branch"`
+	BitbucketBuildPath  types.String `tfsdk:"bitbucket_build_path"`
+
+	// Gitea provider settings (source_type = "gitea")
+	GiteaId         types.String `tfsdk:"gitea_id"`
+	GiteaRepository types.String `tfsdk:"gitea_repository"`
+	GiteaOwner      types.String `tfsdk:"gitea_owner"`
+	GiteaBranch     types.String `tfsdk:"gitea_branch"`
+	GiteaBuildPath  types.String `tfsdk:"gitea_build_path"`
+
+	// Environment
+	Env types.String `tfsdk:"env"`
+
+	// Runtime configuration
+	AutoDeploy types.Bool `tfsdk:"auto_deploy"`
+
+	// Deployment options
+	DeployOnCreate types.Bool `tfsdk:"deploy_on_create"`
 }
 
 func (r *ComposeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -48,79 +97,38 @@ func (r *ComposeResource) Metadata(_ context.Context, req resource.MetadataReque
 
 func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a Dokploy compose stack. Supports multiple source types including GitHub, GitLab, Bitbucket, Gitea, custom Git repositories, and raw compose file content.",
 		Attributes: map[string]schema.Attribute{
+			// Core attributes
 			"id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "The unique identifier of the compose stack.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"project_id": schema.StringAttribute{
-				Required: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"environment_id": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "The environment ID this compose stack belongs to.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "The display name of the compose stack.",
 			},
-			"compose_file_content": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+			"app_name": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The app name used for Docker service naming. Auto-generated if not specified.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"source_type": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"custom_git_url": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"custom_git_branch": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"custom_git_ssh_key_id": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"compose_path": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"auto_deploy": schema.BoolAttribute{
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"deploy_on_create": schema.BoolAttribute{
-				Optional: true,
+			"description": schema.StringAttribute{
+				Optional:    true,
+				Description: "A description of the compose stack.",
 			},
 			"server_id": schema.StringAttribute{
 				Optional:    true,
@@ -129,6 +137,193 @@ func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+			},
+
+			// Compose file
+			"compose_file_content": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Raw docker-compose.yml content (for source_type 'raw').",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"compose_path": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Path to the docker-compose.yml file in the repository.",
+				Default:     stringdefault.StaticString("./docker-compose.yml"),
+			},
+
+			// Source type
+			"source_type": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The source type for the compose stack: github, gitlab, bitbucket, gitea, git, or raw.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("github", "gitlab", "bitbucket", "gitea", "git", "raw"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+
+			// Custom Git provider settings (source_type = "git")
+			"custom_git_url": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Custom Git repository URL (for source_type 'git').",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"custom_git_branch": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Branch to use for custom Git repository.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"custom_git_ssh_key_id": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "SSH key ID for accessing the custom Git repository.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"custom_git_build_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Build path within the custom Git repository.",
+			},
+			"enable_submodules": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Enable Git submodules support.",
+				Default:     booldefault.StaticBool(false),
+			},
+
+			// GitHub provider settings (source_type = "github")
+			"repository": schema.StringAttribute{
+				Optional:    true,
+				Description: "Repository name for GitHub source (e.g., 'my-repo').",
+			},
+			"branch": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Branch to deploy from (GitHub/GitLab/Bitbucket/Gitea).",
+				Default:     stringdefault.StaticString("main"),
+			},
+			"owner": schema.StringAttribute{
+				Optional:    true,
+				Description: "Repository owner/organization for GitHub source.",
+			},
+			"github_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitHub App installation ID. Required for GitHub source type.",
+			},
+			"trigger_type": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Trigger type for deployments: 'push' (default) or 'tag'.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("push", "tag"),
+				},
+				Default: stringdefault.StaticString("push"),
+			},
+
+			// GitLab provider settings (source_type = "gitlab")
+			"gitlab_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitLab integration ID. Required for GitLab source type.",
+			},
+			"gitlab_project_id": schema.Int64Attribute{
+				Optional:    true,
+				Description: "GitLab project ID.",
+			},
+			"gitlab_repository": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitLab repository name.",
+			},
+			"gitlab_owner": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitLab repository owner/group.",
+			},
+			"gitlab_branch": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitLab branch to deploy from.",
+			},
+			"gitlab_build_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Build path within the GitLab repository.",
+			},
+			"gitlab_path_namespace": schema.StringAttribute{
+				Optional:    true,
+				Description: "GitLab path namespace (for nested groups).",
+			},
+
+			// Bitbucket provider settings (source_type = "bitbucket")
+			"bitbucket_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "Bitbucket integration ID. Required for Bitbucket source type.",
+			},
+			"bitbucket_repository": schema.StringAttribute{
+				Optional:    true,
+				Description: "Bitbucket repository name.",
+			},
+			"bitbucket_owner": schema.StringAttribute{
+				Optional:    true,
+				Description: "Bitbucket repository owner/workspace.",
+			},
+			"bitbucket_branch": schema.StringAttribute{
+				Optional:    true,
+				Description: "Bitbucket branch to deploy from.",
+			},
+			"bitbucket_build_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Build path within the Bitbucket repository.",
+			},
+
+			// Gitea provider settings (source_type = "gitea")
+			"gitea_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "Gitea integration ID. Required for Gitea source type.",
+			},
+			"gitea_repository": schema.StringAttribute{
+				Optional:    true,
+				Description: "Gitea repository name.",
+			},
+			"gitea_owner": schema.StringAttribute{
+				Optional:    true,
+				Description: "Gitea repository owner/organization.",
+			},
+			"gitea_branch": schema.StringAttribute{
+				Optional:    true,
+				Description: "Gitea branch to deploy from.",
+			},
+			"gitea_build_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Build path within the Gitea repository.",
+			},
+
+			// Environment
+			"env": schema.StringAttribute{
+				Optional:    true,
+				Description: "Environment variables in KEY=VALUE format, one per line.",
+			},
+
+			// Runtime configuration
+			"auto_deploy": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Enable automatic deployment on Git push. Defaults to API default (typically true).",
+			},
+
+			// Deployment options
+			"deploy_on_create": schema.BoolAttribute{
+				Optional:    true,
+				Description: "Trigger a deployment after creating the compose stack.",
 			},
 		},
 	}
@@ -154,18 +349,9 @@ func (r *ComposeResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	if plan.ComposePath.IsUnknown() || plan.ComposePath.IsNull() {
-		plan.ComposePath = types.StringValue("./docker-compose.yml")
-	}
-
+	// Infer source type if not specified
 	if plan.SourceType.IsUnknown() || plan.SourceType.IsNull() {
-		if !plan.CustomGitUrl.IsNull() && !plan.CustomGitUrl.IsUnknown() && plan.CustomGitUrl.ValueString() != "" {
-			plan.SourceType = types.StringValue("git")
-		} else if !plan.ComposeFileContent.IsNull() && !plan.ComposeFileContent.IsUnknown() && plan.ComposeFileContent.ValueString() != "" {
-			plan.SourceType = types.StringValue("raw")
-		} else {
-			plan.SourceType = types.StringValue("github")
-		}
+		plan.SourceType = inferComposeSourceType(&plan)
 	}
 
 	comp := client.Compose{
@@ -181,47 +367,86 @@ func (r *ComposeResource) Create(ctx context.Context, req resource.CreateRequest
 		ServerID:          plan.ServerID.ValueString(),
 	}
 
+	// GitHub fields
+	if !plan.Repository.IsNull() {
+		comp.Repository = plan.Repository.ValueString()
+	}
+	if !plan.Branch.IsNull() {
+		comp.Branch = plan.Branch.ValueString()
+	}
+	if !plan.Owner.IsNull() {
+		comp.Owner = plan.Owner.ValueString()
+	}
+	if !plan.GithubId.IsNull() {
+		comp.GithubId = plan.GithubId.ValueString()
+	}
+
+	// GitLab fields
+	if !plan.GitlabId.IsNull() {
+		comp.GitlabId = plan.GitlabId.ValueString()
+	}
+	if !plan.GitlabProjectId.IsNull() {
+		comp.GitlabProjectId = plan.GitlabProjectId.ValueInt64()
+	}
+	if !plan.GitlabRepository.IsNull() {
+		comp.GitlabRepository = plan.GitlabRepository.ValueString()
+	}
+	if !plan.GitlabOwner.IsNull() {
+		comp.GitlabOwner = plan.GitlabOwner.ValueString()
+	}
+	if !plan.GitlabBranch.IsNull() {
+		comp.GitlabBranch = plan.GitlabBranch.ValueString()
+	}
+	if !plan.GitlabBuildPath.IsNull() {
+		comp.GitlabBuildPath = plan.GitlabBuildPath.ValueString()
+	}
+	if !plan.GitlabPathNamespace.IsNull() {
+		comp.GitlabPathNamespace = plan.GitlabPathNamespace.ValueString()
+	}
+
+	// Bitbucket fields
+	if !plan.BitbucketId.IsNull() {
+		comp.BitbucketId = plan.BitbucketId.ValueString()
+	}
+	if !plan.BitbucketRepository.IsNull() {
+		comp.BitbucketRepository = plan.BitbucketRepository.ValueString()
+	}
+	if !plan.BitbucketOwner.IsNull() {
+		comp.BitbucketOwner = plan.BitbucketOwner.ValueString()
+	}
+	if !plan.BitbucketBranch.IsNull() {
+		comp.BitbucketBranch = plan.BitbucketBranch.ValueString()
+	}
+	if !plan.BitbucketBuildPath.IsNull() {
+		comp.BitbucketBuildPath = plan.BitbucketBuildPath.ValueString()
+	}
+
+	// Gitea fields
+	if !plan.GiteaId.IsNull() {
+		comp.GiteaId = plan.GiteaId.ValueString()
+	}
+	if !plan.GiteaRepository.IsNull() {
+		comp.GiteaRepository = plan.GiteaRepository.ValueString()
+	}
+	if !plan.GiteaOwner.IsNull() {
+		comp.GiteaOwner = plan.GiteaOwner.ValueString()
+	}
+	if !plan.GiteaBranch.IsNull() {
+		comp.GiteaBranch = plan.GiteaBranch.ValueString()
+	}
+	if !plan.GiteaBuildPath.IsNull() {
+		comp.GiteaBuildPath = plan.GiteaBuildPath.ValueString()
+	}
+
 	createdComp, err := r.client.CreateCompose(comp)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating compose", err.Error())
 		return
 	}
 
+	// Update plan from created compose
 	plan.ID = types.StringValue(createdComp.ID)
-	plan.SourceType = types.StringValue(createdComp.SourceType)
-	plan.ComposePath = types.StringValue(createdComp.ComposePath)
-	plan.AutoDeploy = types.BoolValue(createdComp.AutoDeploy)
-
-	if createdComp.ComposeFile != "" {
-		plan.ComposeFileContent = types.StringValue(createdComp.ComposeFile)
-	} else {
-		plan.ComposeFileContent = types.StringNull()
-	}
-
-	// Set optional Git fields from response or null
-	if createdComp.CustomGitUrl != "" {
-		plan.CustomGitUrl = types.StringValue(createdComp.CustomGitUrl)
-	} else if plan.CustomGitUrl.IsUnknown() {
-		plan.CustomGitUrl = types.StringNull()
-	}
-
-	if createdComp.CustomGitBranch != "" {
-		plan.CustomGitBranch = types.StringValue(createdComp.CustomGitBranch)
-	} else if plan.CustomGitBranch.IsUnknown() {
-		plan.CustomGitBranch = types.StringNull()
-	}
-
-	if createdComp.CustomGitSSHKeyId != "" {
-		plan.CustomGitSSHKeyID = types.StringValue(createdComp.CustomGitSSHKeyId)
-	} else if plan.CustomGitSSHKeyID.IsUnknown() {
-		plan.CustomGitSSHKeyID = types.StringNull()
-	}
-
-	if createdComp.ServerID != "" {
-		plan.ServerID = types.StringValue(createdComp.ServerID)
-	} else if plan.ServerID.IsUnknown() {
-		plan.ServerID = types.StringNull()
-	}
+	readComposeIntoState(&plan, createdComp)
 
 	if !plan.DeployOnCreate.IsNull() && plan.DeployOnCreate.ValueBool() {
 		err := r.client.DeployCompose(createdComp.ID, plan.ServerID.ValueString())
@@ -252,41 +477,7 @@ func (r *ComposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.Name = types.StringValue(comp.Name)
-	if comp.ProjectID != "" {
-		state.ProjectID = types.StringValue(comp.ProjectID)
-	}
-	state.EnvironmentID = types.StringValue(comp.EnvironmentID)
-	state.ComposeFileContent = types.StringValue(comp.ComposeFile)
-	state.SourceType = types.StringValue(comp.SourceType)
-
-	// Only update optional Git fields if they're non-empty from API
-	if comp.CustomGitUrl != "" {
-		state.CustomGitUrl = types.StringValue(comp.CustomGitUrl)
-	} else if state.CustomGitUrl.IsUnknown() {
-		state.CustomGitUrl = types.StringNull()
-	}
-
-	if comp.CustomGitBranch != "" {
-		state.CustomGitBranch = types.StringValue(comp.CustomGitBranch)
-	} else if state.CustomGitBranch.IsUnknown() {
-		state.CustomGitBranch = types.StringNull()
-	}
-
-	if comp.CustomGitSSHKeyId != "" {
-		state.CustomGitSSHKeyID = types.StringValue(comp.CustomGitSSHKeyId)
-	} else if state.CustomGitSSHKeyID.IsUnknown() {
-		state.CustomGitSSHKeyID = types.StringNull()
-	}
-
-	state.ComposePath = types.StringValue(comp.ComposePath)
-	state.AutoDeploy = types.BoolValue(comp.AutoDeploy)
-
-	if comp.ServerID != "" {
-		state.ServerID = types.StringValue(comp.ServerID)
-	} else if state.ServerID.IsUnknown() {
-		state.ServerID = types.StringNull()
-	}
+	readComposeIntoState(&state, comp)
 
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -313,16 +504,75 @@ func (r *ComposeResource) Update(ctx context.Context, req resource.UpdateRequest
 		AutoDeploy:        plan.AutoDeploy.ValueBool(),
 	}
 
+	// GitHub fields
+	if !plan.Repository.IsNull() {
+		comp.Repository = plan.Repository.ValueString()
+	}
+	if !plan.Branch.IsNull() {
+		comp.Branch = plan.Branch.ValueString()
+	}
+	if !plan.Owner.IsNull() {
+		comp.Owner = plan.Owner.ValueString()
+	}
+	if !plan.GithubId.IsNull() {
+		comp.GithubId = plan.GithubId.ValueString()
+	}
+
+	// GitLab fields
+	if !plan.GitlabId.IsNull() {
+		comp.GitlabId = plan.GitlabId.ValueString()
+	}
+	if !plan.GitlabProjectId.IsNull() {
+		comp.GitlabProjectId = plan.GitlabProjectId.ValueInt64()
+	}
+	if !plan.GitlabRepository.IsNull() {
+		comp.GitlabRepository = plan.GitlabRepository.ValueString()
+	}
+	if !plan.GitlabOwner.IsNull() {
+		comp.GitlabOwner = plan.GitlabOwner.ValueString()
+	}
+	if !plan.GitlabBranch.IsNull() {
+		comp.GitlabBranch = plan.GitlabBranch.ValueString()
+	}
+	if !plan.GitlabBuildPath.IsNull() {
+		comp.GitlabBuildPath = plan.GitlabBuildPath.ValueString()
+	}
+
+	// Bitbucket fields
+	if !plan.BitbucketId.IsNull() {
+		comp.BitbucketId = plan.BitbucketId.ValueString()
+	}
+	if !plan.BitbucketRepository.IsNull() {
+		comp.BitbucketRepository = plan.BitbucketRepository.ValueString()
+	}
+	if !plan.BitbucketOwner.IsNull() {
+		comp.BitbucketOwner = plan.BitbucketOwner.ValueString()
+	}
+	if !plan.BitbucketBranch.IsNull() {
+		comp.BitbucketBranch = plan.BitbucketBranch.ValueString()
+	}
+
+	// Gitea fields
+	if !plan.GiteaId.IsNull() {
+		comp.GiteaId = plan.GiteaId.ValueString()
+	}
+	if !plan.GiteaRepository.IsNull() {
+		comp.GiteaRepository = plan.GiteaRepository.ValueString()
+	}
+	if !plan.GiteaOwner.IsNull() {
+		comp.GiteaOwner = plan.GiteaOwner.ValueString()
+	}
+	if !plan.GiteaBranch.IsNull() {
+		comp.GiteaBranch = plan.GiteaBranch.ValueString()
+	}
+
 	updatedComp, err := r.client.UpdateCompose(comp)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating compose", err.Error())
 		return
 	}
 
-	plan.Name = types.StringValue(updatedComp.Name)
-	plan.ComposeFileContent = types.StringValue(updatedComp.ComposeFile)
-	plan.SourceType = types.StringValue(updatedComp.SourceType)
-	plan.AutoDeploy = types.BoolValue(updatedComp.AutoDeploy)
+	readComposeIntoState(&plan, updatedComp)
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -338,7 +588,9 @@ func (r *ComposeResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	err := r.client.DeleteCompose(state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "not_found") || strings.Contains(errStr, "404") {
+			// Resource already deleted, that's fine
 			return
 		}
 		resp.Diagnostics.AddError("Error deleting compose", err.Error())
@@ -348,4 +600,162 @@ func (r *ComposeResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *ComposeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// Helper functions
+
+func inferComposeSourceType(plan *ComposeResourceModel) types.String {
+	if !plan.ComposeFileContent.IsNull() && !plan.ComposeFileContent.IsUnknown() && plan.ComposeFileContent.ValueString() != "" {
+		return types.StringValue("raw")
+	}
+	if !plan.CustomGitUrl.IsNull() && !plan.CustomGitUrl.IsUnknown() && plan.CustomGitUrl.ValueString() != "" {
+		return types.StringValue("git")
+	}
+	if !plan.GitlabId.IsNull() && !plan.GitlabId.IsUnknown() && plan.GitlabId.ValueString() != "" {
+		return types.StringValue("gitlab")
+	}
+	if !plan.BitbucketId.IsNull() && !plan.BitbucketId.IsUnknown() && plan.BitbucketId.ValueString() != "" {
+		return types.StringValue("bitbucket")
+	}
+	if !plan.GiteaId.IsNull() && !plan.GiteaId.IsUnknown() && plan.GiteaId.ValueString() != "" {
+		return types.StringValue("gitea")
+	}
+	return types.StringValue("github")
+}
+
+func readComposeIntoState(state *ComposeResourceModel, comp *client.Compose) {
+	state.Name = types.StringValue(comp.Name)
+
+	if comp.EnvironmentID != "" {
+		state.EnvironmentID = types.StringValue(comp.EnvironmentID)
+	}
+	if comp.AppName != "" {
+		state.AppName = types.StringValue(comp.AppName)
+	}
+	if comp.Description != "" {
+		state.Description = types.StringValue(comp.Description)
+	}
+	if comp.ServerID != "" {
+		state.ServerID = types.StringValue(comp.ServerID)
+	} else if state.ServerID.IsUnknown() {
+		state.ServerID = types.StringNull()
+	}
+
+	// Compose file
+	if comp.ComposeFile != "" {
+		state.ComposeFileContent = types.StringValue(comp.ComposeFile)
+	} else if state.ComposeFileContent.IsUnknown() {
+		state.ComposeFileContent = types.StringNull()
+	}
+	if comp.ComposePath != "" {
+		state.ComposePath = types.StringValue(comp.ComposePath)
+	}
+
+	// Source type
+	if comp.SourceType != "" {
+		state.SourceType = types.StringValue(comp.SourceType)
+	}
+
+	// Custom Git fields
+	if comp.CustomGitUrl != "" {
+		state.CustomGitUrl = types.StringValue(comp.CustomGitUrl)
+	} else if state.CustomGitUrl.IsUnknown() {
+		state.CustomGitUrl = types.StringNull()
+	}
+	if comp.CustomGitBranch != "" {
+		state.CustomGitBranch = types.StringValue(comp.CustomGitBranch)
+	} else if state.CustomGitBranch.IsUnknown() {
+		state.CustomGitBranch = types.StringNull()
+	}
+	if comp.CustomGitSSHKeyId != "" {
+		state.CustomGitSSHKeyID = types.StringValue(comp.CustomGitSSHKeyId)
+	} else if state.CustomGitSSHKeyID.IsUnknown() {
+		state.CustomGitSSHKeyID = types.StringNull()
+	}
+	if comp.CustomGitBuildPath != "" {
+		state.CustomGitBuildPath = types.StringValue(comp.CustomGitBuildPath)
+	}
+	state.EnableSubmodules = types.BoolValue(comp.EnableSubmodules)
+
+	// GitHub fields
+	if comp.Repository != "" {
+		state.Repository = types.StringValue(comp.Repository)
+	}
+	if comp.Branch != "" {
+		state.Branch = types.StringValue(comp.Branch)
+	}
+	if comp.Owner != "" {
+		state.Owner = types.StringValue(comp.Owner)
+	}
+	if comp.GithubId != "" {
+		state.GithubId = types.StringValue(comp.GithubId)
+	}
+	if comp.TriggerType != "" {
+		state.TriggerType = types.StringValue(comp.TriggerType)
+	}
+
+	// GitLab fields
+	if comp.GitlabId != "" {
+		state.GitlabId = types.StringValue(comp.GitlabId)
+	}
+	if comp.GitlabProjectId != 0 {
+		state.GitlabProjectId = types.Int64Value(comp.GitlabProjectId)
+	}
+	if comp.GitlabRepository != "" {
+		state.GitlabRepository = types.StringValue(comp.GitlabRepository)
+	}
+	if comp.GitlabOwner != "" {
+		state.GitlabOwner = types.StringValue(comp.GitlabOwner)
+	}
+	if comp.GitlabBranch != "" {
+		state.GitlabBranch = types.StringValue(comp.GitlabBranch)
+	}
+	if comp.GitlabBuildPath != "" {
+		state.GitlabBuildPath = types.StringValue(comp.GitlabBuildPath)
+	}
+	if comp.GitlabPathNamespace != "" {
+		state.GitlabPathNamespace = types.StringValue(comp.GitlabPathNamespace)
+	}
+
+	// Bitbucket fields
+	if comp.BitbucketId != "" {
+		state.BitbucketId = types.StringValue(comp.BitbucketId)
+	}
+	if comp.BitbucketRepository != "" {
+		state.BitbucketRepository = types.StringValue(comp.BitbucketRepository)
+	}
+	if comp.BitbucketOwner != "" {
+		state.BitbucketOwner = types.StringValue(comp.BitbucketOwner)
+	}
+	if comp.BitbucketBranch != "" {
+		state.BitbucketBranch = types.StringValue(comp.BitbucketBranch)
+	}
+	if comp.BitbucketBuildPath != "" {
+		state.BitbucketBuildPath = types.StringValue(comp.BitbucketBuildPath)
+	}
+
+	// Gitea fields
+	if comp.GiteaId != "" {
+		state.GiteaId = types.StringValue(comp.GiteaId)
+	}
+	if comp.GiteaRepository != "" {
+		state.GiteaRepository = types.StringValue(comp.GiteaRepository)
+	}
+	if comp.GiteaOwner != "" {
+		state.GiteaOwner = types.StringValue(comp.GiteaOwner)
+	}
+	if comp.GiteaBranch != "" {
+		state.GiteaBranch = types.StringValue(comp.GiteaBranch)
+	}
+	if comp.GiteaBuildPath != "" {
+		state.GiteaBuildPath = types.StringValue(comp.GiteaBuildPath)
+	}
+
+	// Environment
+	if comp.Env != "" {
+		state.Env = types.StringValue(comp.Env)
+	}
+
+	// Runtime
+	state.AutoDeploy = types.BoolValue(comp.AutoDeploy)
 }

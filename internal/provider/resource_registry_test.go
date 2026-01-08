@@ -73,7 +73,6 @@ resource "dokploy_environment" "test" {
 }
 
 resource "dokploy_application" "test" {
-  project_id     = dokploy_project.test.id
   environment_id = dokploy_environment.test.id
   name           = "%s"
   build_type     = "nixpacks"
