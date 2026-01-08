@@ -42,7 +42,7 @@ func TestAccComposeResource(t *testing.T) {
 				ResourceName:            "dokploy_compose.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"deploy_on_create", "branch", "trigger_type"}, // These are not applicable for raw source type
+				ImportStateVerifyIgnore: []string{"deploy_on_create", "branch", "trigger_type"}, // deploy_on_create is write-only; branch/trigger_type have API defaults that don't apply to raw source type in this test
 			},
 		},
 	})

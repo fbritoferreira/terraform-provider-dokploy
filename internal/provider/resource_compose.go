@@ -317,8 +317,7 @@ func (r *ComposeResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"auto_deploy": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Enable automatic deployment on Git push.",
-				Default:     booldefault.StaticBool(true),
+				Description: "Enable automatic deployment on Git push. Defaults to API default (typically true).",
 			},
 
 			// Deployment options

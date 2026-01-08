@@ -963,10 +963,11 @@ func (r *ApplicationResource) saveSourceProvider(appID string, plan *Application
 }
 
 func (r *ApplicationResource) saveEnvironment(appID string, plan *ApplicationResourceModel) error {
-	// Only save if at least one env field is set
+	// Only save if at least one env field is set or create_env_file is explicitly configured
 	if (plan.Env.IsNull() || plan.Env.IsUnknown()) &&
 		(plan.BuildArgs.IsNull() || plan.BuildArgs.IsUnknown()) &&
-		(plan.BuildSecrets.IsNull() || plan.BuildSecrets.IsUnknown()) {
+		(plan.BuildSecrets.IsNull() || plan.BuildSecrets.IsUnknown()) &&
+		(plan.CreateEnvFile.IsNull() || plan.CreateEnvFile.IsUnknown()) {
 		return nil
 	}
 
