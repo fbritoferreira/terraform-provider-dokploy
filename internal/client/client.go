@@ -2251,15 +2251,41 @@ func (c *DokployClient) CreateBackup(backup Backup) (*Backup, error) {
 	}
 
 	// Handle empty response from buggy Dokploy API (backup.create doesn't return the created backup)
-	// WORKAROUND: Query by unique parameters to find the newly created backup
-	// This works because the combination of destinationId + databaseId + databaseType should be unique per backup
+	// WORKAROUND: Query the database endpoint which includes backups, then find our newly created backup
 	if len(resp) == 0 {
-		// Sleep briefly to ensure the backup is committed to the database
-		time.Sleep(500 * time.Millisecond)
+		// Get the database ID based on type
+		var databaseID string
+		switch backup.DatabaseType {
+		case "postgres":
+			databaseID = backup.PostgresID
+		case "mysql":
+			databaseID = backup.MysqlID
+		case "mariadb":
+			databaseID = backup.MariadbID
+		case "mongo":
+			databaseID = backup.MongoID
+		}
 
-		// Try to find the backup by querying all backups for this destination/database combo
-		// Since we can't list all backups via API, we'll have to return an error
-		return nil, fmt.Errorf("backup.create returned empty response due to Dokploy API bug (missing return statement in backup router). The backup may have been created in the database, but we cannot retrieve its ID without a 'list all backups' API endpoint. Please upgrade Dokploy to a version with the fix, or manually patch /app/apps/dokploy/server/api/routers/backup.ts line 114 to add 'return backup;'")
+		if databaseID == "" {
+			return nil, fmt.Errorf("backup.create returned empty response and no database ID available to lookup backup")
+		}
+
+		// Query the database to get its backups
+		backups, err := c.GetBackupsByDatabaseID(databaseID, backup.DatabaseType)
+		if err != nil {
+			return nil, fmt.Errorf("backup.create returned empty response, failed to lookup backup: %w", err)
+		}
+
+		// Find our backup by matching unique parameters
+		for _, b := range backups {
+			if b.DestinationID == backup.DestinationID &&
+				b.Prefix == backup.Prefix &&
+				b.Schedule == backup.Schedule {
+				return &b, nil
+			}
+		}
+
+		return nil, fmt.Errorf("backup.create returned empty response and could not find created backup in database backups list")
 	}
 
 	var result Backup
@@ -2292,18 +2318,21 @@ func (c *DokployClient) UpdateBackup(backup Backup) (*Backup, error) {
 		"destinationId": backup.DestinationID,
 		"database":      backup.Database,
 		"databaseType":  backup.DatabaseType,
+		"serviceName":   backup.ServiceName, // Required by API even if empty
 	}
 
 	if backup.KeepLatestCount > 0 {
 		payload["keepLatestCount"] = backup.KeepLatestCount
 	}
-	if backup.ServiceName != "" {
-		payload["serviceName"] = backup.ServiceName
-	}
 
 	resp, err := c.doRequest("POST", "backup.update", payload)
 	if err != nil {
 		return nil, err
+	}
+
+	// Handle empty response - fetch the backup by ID
+	if len(resp) == 0 {
+		return c.GetBackup(backup.BackupID)
 	}
 
 	var result Backup
@@ -2319,4 +2348,37 @@ func (c *DokployClient) DeleteBackup(id string) error {
 	}
 	_, err := c.doRequest("POST", "backup.remove", payload)
 	return err
+}
+
+// GetBackupsByDatabaseID retrieves all backups for a specific database
+// by querying the database endpoint which includes backups in its response
+func (c *DokployClient) GetBackupsByDatabaseID(databaseID, databaseType string) ([]Backup, error) {
+	var endpoint string
+	switch databaseType {
+	case "postgres":
+		endpoint = fmt.Sprintf("postgres.one?postgresId=%s", databaseID)
+	case "mysql":
+		endpoint = fmt.Sprintf("mysql.one?mysqlId=%s", databaseID)
+	case "mariadb":
+		endpoint = fmt.Sprintf("mariadb.one?mariadbId=%s", databaseID)
+	case "mongo":
+		endpoint = fmt.Sprintf("mongo.one?mongoId=%s", databaseID)
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", databaseType)
+	}
+
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// The database response includes a "backups" array
+	var result struct {
+		Backups []Backup `json:"backups"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse database response: %w", err)
+	}
+
+	return result.Backups, nil
 }
