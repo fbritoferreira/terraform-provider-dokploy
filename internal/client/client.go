@@ -2093,3 +2093,294 @@ func (c *DokployClient) ListRegistries() ([]Registry, error) {
 	}
 	return registries, nil
 }
+
+// Destination represents a backup destination (S3, MinIO, etc.)
+type Destination struct {
+	DestinationID   string `json:"destinationId"`
+	Name            string `json:"name"`
+	Provider        string `json:"provider"`
+	AccessKey       string `json:"accessKey"`
+	SecretAccessKey string `json:"secretAccessKey"`
+	Bucket          string `json:"bucket"`
+	Region          string `json:"region"`
+	Endpoint        string `json:"endpoint"`
+	OrganizationID  string `json:"organizationId"`
+	CreatedAt       string `json:"createdAt"`
+}
+
+func (c *DokployClient) CreateDestination(dest Destination) (*Destination, error) {
+	payload := map[string]interface{}{
+		"name":            dest.Name,
+		"provider":        dest.Provider,
+		"accessKey":       dest.AccessKey,
+		"secretAccessKey": dest.SecretAccessKey,
+		"bucket":          dest.Bucket,
+		"region":          dest.Region,
+		"endpoint":        dest.Endpoint,
+	}
+
+	resp, err := c.doRequest("POST", "destination.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Destination
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) GetDestination(id string) (*Destination, error) {
+	endpoint := fmt.Sprintf("destination.one?destinationId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Destination
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) UpdateDestination(dest Destination) (*Destination, error) {
+	payload := map[string]interface{}{
+		"destinationId":   dest.DestinationID,
+		"name":            dest.Name,
+		"provider":        dest.Provider,
+		"accessKey":       dest.AccessKey,
+		"secretAccessKey": dest.SecretAccessKey,
+		"bucket":          dest.Bucket,
+		"region":          dest.Region,
+		"endpoint":        dest.Endpoint,
+	}
+
+	resp, err := c.doRequest("POST", "destination.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Destination
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) DeleteDestination(id string) error {
+	payload := map[string]string{
+		"destinationId": id,
+	}
+	_, err := c.doRequest("POST", "destination.remove", payload)
+	return err
+}
+
+func (c *DokployClient) ListDestinations() ([]Destination, error) {
+	resp, err := c.doRequest("GET", "destination.all", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var destinations []Destination
+	if err := json.Unmarshal(resp, &destinations); err != nil {
+		return nil, err
+	}
+	return destinations, nil
+}
+
+// Backup represents a scheduled backup configuration.
+type Backup struct {
+	BackupID        string `json:"backupId"`
+	AppName         string `json:"appName"`
+	Schedule        string `json:"schedule"`
+	Enabled         bool   `json:"enabled"`
+	Database        string `json:"database"`
+	Prefix          string `json:"prefix"`
+	DestinationID   string `json:"destinationId"`
+	KeepLatestCount int    `json:"keepLatestCount"`
+	BackupType      string `json:"backupType"`   // "database" or "compose"
+	DatabaseType    string `json:"databaseType"` // "postgres", "mysql", "mariadb", "mongo"
+	PostgresID      string `json:"postgresId"`
+	MysqlID         string `json:"mysqlId"`
+	MariadbID       string `json:"mariadbId"`
+	MongoID         string `json:"mongoId"`
+	ComposeID       string `json:"composeId"`
+	ServiceName     string `json:"serviceName"`
+}
+
+func (c *DokployClient) CreateBackup(backup Backup) (*Backup, error) {
+	payload := map[string]interface{}{
+		"schedule":      backup.Schedule,
+		"enabled":       backup.Enabled,
+		"prefix":        backup.Prefix,
+		"destinationId": backup.DestinationID,
+		"database":      backup.Database,
+		"backupType":    backup.BackupType,
+		"databaseType":  backup.DatabaseType,
+	}
+
+	if backup.KeepLatestCount > 0 {
+		payload["keepLatestCount"] = backup.KeepLatestCount
+	}
+
+	// Add type-specific database ID
+	if backup.PostgresID != "" {
+		payload["postgresId"] = backup.PostgresID
+	}
+	if backup.MysqlID != "" {
+		payload["mysqlId"] = backup.MysqlID
+	}
+	if backup.MariadbID != "" {
+		payload["mariadbId"] = backup.MariadbID
+	}
+	if backup.MongoID != "" {
+		payload["mongoId"] = backup.MongoID
+	}
+	if backup.ComposeID != "" {
+		payload["composeId"] = backup.ComposeID
+	}
+	if backup.ServiceName != "" {
+		payload["serviceName"] = backup.ServiceName
+	}
+
+	resp, err := c.doRequest("POST", "backup.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle empty response from buggy Dokploy API (backup.create doesn't return the created backup)
+	// WORKAROUND: Query the database endpoint which includes backups, then find our newly created backup
+	if len(resp) == 0 {
+		// Get the database ID based on type
+		var databaseID string
+		switch backup.DatabaseType {
+		case "postgres":
+			databaseID = backup.PostgresID
+		case "mysql":
+			databaseID = backup.MysqlID
+		case "mariadb":
+			databaseID = backup.MariadbID
+		case "mongo":
+			databaseID = backup.MongoID
+		}
+
+		if databaseID == "" {
+			return nil, fmt.Errorf("backup.create returned empty response and no database ID available to lookup backup")
+		}
+
+		// Query the database to get its backups
+		backups, err := c.GetBackupsByDatabaseID(databaseID, backup.DatabaseType)
+		if err != nil {
+			return nil, fmt.Errorf("backup.create returned empty response, failed to lookup backup: %w", err)
+		}
+
+		// Find our backup by matching unique parameters
+		for _, b := range backups {
+			if b.DestinationID == backup.DestinationID &&
+				b.Prefix == backup.Prefix &&
+				b.Schedule == backup.Schedule {
+				return &b, nil
+			}
+		}
+
+		return nil, fmt.Errorf("backup.create returned empty response and could not find created backup in database backups list")
+	}
+
+	var result Backup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal backup response (len=%d): %w. Response: %s", len(resp), err, string(resp))
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) GetBackup(id string) (*Backup, error) {
+	endpoint := fmt.Sprintf("backup.one?backupId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Backup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) UpdateBackup(backup Backup) (*Backup, error) {
+	// serviceName is required by API schema but can be empty string for database backups.
+	// It's only meaningful for compose backups where it specifies the service to backup.
+	payload := map[string]interface{}{
+		"backupId":      backup.BackupID,
+		"schedule":      backup.Schedule,
+		"enabled":       backup.Enabled,
+		"prefix":        backup.Prefix,
+		"destinationId": backup.DestinationID,
+		"database":      backup.Database,
+		"databaseType":  backup.DatabaseType,
+		"serviceName":   backup.ServiceName,
+	}
+
+	if backup.KeepLatestCount > 0 {
+		payload["keepLatestCount"] = backup.KeepLatestCount
+	}
+
+	resp, err := c.doRequest("POST", "backup.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle empty response - fetch the backup by ID
+	if len(resp) == 0 {
+		return c.GetBackup(backup.BackupID)
+	}
+
+	var result Backup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) DeleteBackup(id string) error {
+	payload := map[string]string{
+		"backupId": id,
+	}
+	_, err := c.doRequest("POST", "backup.remove", payload)
+	return err
+}
+
+// GetBackupsByDatabaseID retrieves all backups for a specific database
+// by querying the database endpoint which includes backups in its response.
+func (c *DokployClient) GetBackupsByDatabaseID(databaseID, databaseType string) ([]Backup, error) {
+	var endpoint string
+	switch databaseType {
+	case "postgres":
+		endpoint = fmt.Sprintf("postgres.one?postgresId=%s", databaseID)
+	case "mysql":
+		endpoint = fmt.Sprintf("mysql.one?mysqlId=%s", databaseID)
+	case "mariadb":
+		endpoint = fmt.Sprintf("mariadb.one?mariadbId=%s", databaseID)
+	case "mongo":
+		endpoint = fmt.Sprintf("mongo.one?mongoId=%s", databaseID)
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", databaseType)
+	}
+
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// The database response includes a "backups" array
+	var result struct {
+		Backups []Backup `json:"backups"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse database response: %w", err)
+	}
+
+	return result.Backups, nil
+}
