@@ -1935,7 +1935,7 @@ func (c *DokployClient) GetServer(id string) (*Server, error) {
 
 // --- GitHub Provider ---
 
-// GitProviderInfo contains the common git provider information nested in responses
+// GitProviderInfo contains the common git provider information nested in responses.
 type GitProviderInfo struct {
 	GitProviderId  string `json:"gitProviderId"`
 	Name           string `json:"name"`
@@ -2909,14 +2909,14 @@ func (c *DokployClient) DeleteRedis(id string) error {
 
 // --- GitLab Provider ---
 
-// GitlabProviderListItem is the structure returned by the gitlabProviders list endpoint
+// GitlabProviderListItem is the structure returned by the gitlabProviders list endpoint.
 type GitlabProviderListItem struct {
 	ID          string          `json:"gitlabId"`
 	GitProvider GitProviderInfo `json:"gitProvider"`
 	GitlabUrl   string          `json:"gitlabUrl"`
 }
 
-// GitlabProvider is the full structure used for create/update operations
+// GitlabProvider is the full structure used for create/update operations.
 type GitlabProvider struct {
 	ID             string `json:"gitlabId"`
 	GitProviderId  string `json:"gitProviderId"`
@@ -3108,13 +3108,13 @@ func (c *DokployClient) ListGitlabProviders() ([]GitlabProviderListItem, error) 
 
 // --- Bitbucket Provider ---
 
-// BitbucketProviderListItem is the structure returned by the bitbucketProviders list endpoint
+// BitbucketProviderListItem is the structure returned by the bitbucketProviders list endpoint.
 type BitbucketProviderListItem struct {
 	ID          string          `json:"bitbucketId"`
 	GitProvider GitProviderInfo `json:"gitProvider"`
 }
 
-// BitbucketProvider is the full structure used for create/update operations
+// BitbucketProvider is the full structure used for create/update operations.
 type BitbucketProvider struct {
 	ID                     string `json:"bitbucketId"`
 	GitProviderId          string `json:"gitProviderId"`
@@ -3277,13 +3277,13 @@ func (c *DokployClient) ListBitbucketProviders() ([]BitbucketProviderListItem, e
 
 // --- Gitea Provider ---
 
-// GiteaProviderListItem is the structure returned by the giteaProviders list endpoint
+// GiteaProviderListItem is the structure returned by the giteaProviders list endpoint.
 type GiteaProviderListItem struct {
 	ID          string          `json:"giteaId"`
 	GitProvider GitProviderInfo `json:"gitProvider"`
 }
 
-// GiteaProvider is the full structure used for create/update operations
+// GiteaProvider is the full structure used for create/update operations.
 type GiteaProvider struct {
 	ID                  string `json:"giteaId"`
 	GitProviderId       string `json:"gitProviderId"`
