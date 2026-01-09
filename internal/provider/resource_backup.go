@@ -158,7 +158,8 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// Validate required fields based on backup_type
-	if backupType == "database" {
+	switch backupType {
+	case "database":
 		if plan.DatabaseID.IsNull() || plan.DatabaseID.ValueString() == "" {
 			resp.Diagnostics.AddError("Missing required field", "database_id is required when backup_type is 'database'")
 			return
@@ -167,7 +168,7 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 			resp.Diagnostics.AddError("Missing required field", "database_type is required when backup_type is 'database'")
 			return
 		}
-	} else if backupType == "compose" {
+	case "compose":
 		if plan.ComposeID.IsNull() || plan.ComposeID.ValueString() == "" {
 			resp.Diagnostics.AddError("Missing required field", "compose_id is required when backup_type is 'compose'")
 			return
@@ -188,7 +189,8 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 		BackupType:      backupType,
 	}
 
-	if backupType == "database" {
+	switch backupType {
+	case "database":
 		backup.DatabaseType = plan.DatabaseType.ValueString()
 		databaseID := plan.DatabaseID.ValueString()
 		switch plan.DatabaseType.ValueString() {
@@ -201,7 +203,7 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 		case "mongo":
 			backup.MongoID = databaseID
 		}
-	} else if backupType == "compose" {
+	case "compose":
 		backup.ComposeID = plan.ComposeID.ValueString()
 		backup.ServiceName = plan.ServiceName.ValueString()
 		// Compose backups still require databaseType field in API (use postgres as default)
@@ -265,7 +267,8 @@ func (r *BackupResource) Read(ctx context.Context, req resource.ReadRequest, res
 		state.DatabaseType = types.StringValue(backup.DatabaseType)
 	}
 
-	if backup.BackupType == "database" {
+	switch backup.BackupType {
+	case "database":
 		// Extract database_id from the appropriate type-specific field
 		switch backup.DatabaseType {
 		case "postgres":
@@ -277,7 +280,7 @@ func (r *BackupResource) Read(ctx context.Context, req resource.ReadRequest, res
 		case "mongo":
 			state.DatabaseID = types.StringValue(backup.MongoID)
 		}
-	} else if backup.BackupType == "compose" {
+	case "compose":
 		state.ComposeID = types.StringValue(backup.ComposeID)
 		if backup.ServiceName != "" {
 			state.ServiceName = types.StringValue(backup.ServiceName)

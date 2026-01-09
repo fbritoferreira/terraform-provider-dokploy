@@ -76,7 +76,7 @@ func (c *DokployClient) doRequest(method, endpoint string, body interface{}) ([]
 
 // --- User ---
 
-// UserDetails represents the nested user object in OrganizationMember
+// UserDetails represents the nested user object in OrganizationMember.
 type UserDetails struct {
 	ID                 string   `json:"id"`
 	FirstName          string   `json:"firstName"`
@@ -95,7 +95,7 @@ type UserDetails struct {
 	ApiKeys            []ApiKey `json:"apiKeys,omitempty"`
 }
 
-// ApiKey represents an API key
+// ApiKey represents an API key.
 type ApiKey struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -114,7 +114,7 @@ type ApiKey struct {
 	Metadata            *string `json:"metadata"`
 }
 
-// OrganizationMember represents a user's membership in an organization
+// OrganizationMember represents a user's membership in an organization.
 type OrganizationMember struct {
 	ID                      string      `json:"id"` // Member ID
 	OrganizationID          string      `json:"organizationId"`
@@ -140,14 +140,14 @@ type OrganizationMember struct {
 	User                    UserDetails `json:"user"`
 }
 
-// User is a simplified user struct for backward compatibility
+// User is a simplified user struct for backward compatibility.
 type User struct {
 	ID             string `json:"userId"`
 	Email          string `json:"email"`
 	OrganizationID string `json:"organizationId"`
 }
 
-// GetUser returns the basic user info (backward compatible)
+// GetUser returns the basic user info (backward compatible).
 func (c *DokployClient) GetUser() (*User, error) {
 	member, err := c.GetCurrentMember()
 	if err != nil {
@@ -160,7 +160,7 @@ func (c *DokployClient) GetUser() (*User, error) {
 	}, nil
 }
 
-// GetCurrentMember returns the full organization member info for the current user
+// GetCurrentMember returns the full organization member info for the current user.
 func (c *DokployClient) GetCurrentMember() (*OrganizationMember, error) {
 	resp, err := c.doRequest("GET", "user.get", nil)
 	if err != nil {
@@ -174,7 +174,7 @@ func (c *DokployClient) GetCurrentMember() (*OrganizationMember, error) {
 	return &member, nil
 }
 
-// ListMembers returns all organization members
+// ListMembers returns all organization members.
 func (c *DokployClient) ListMembers() ([]OrganizationMember, error) {
 	resp, err := c.doRequest("GET", "user.all", nil)
 	if err != nil {
@@ -188,7 +188,7 @@ func (c *DokployClient) ListMembers() ([]OrganizationMember, error) {
 	return members, nil
 }
 
-// GetMemberByUserID finds a member by their user ID
+// GetMemberByUserID finds a member by their user ID.
 func (c *DokployClient) GetMemberByUserID(userID string) (*OrganizationMember, error) {
 	members, err := c.ListMembers()
 	if err != nil {
@@ -203,7 +203,7 @@ func (c *DokployClient) GetMemberByUserID(userID string) (*OrganizationMember, e
 	return nil, fmt.Errorf("member with user ID %s not found", userID)
 }
 
-// GetMemberByID finds a member by their member ID
+// GetMemberByID finds a member by their member ID.
 func (c *DokployClient) GetMemberByID(memberID string) (*OrganizationMember, error) {
 	members, err := c.ListMembers()
 	if err != nil {
@@ -218,7 +218,7 @@ func (c *DokployClient) GetMemberByID(memberID string) (*OrganizationMember, err
 	return nil, fmt.Errorf("member with ID %s not found", memberID)
 }
 
-// UserPermissionsInput represents the input for assigning permissions
+// UserPermissionsInput represents the input for assigning permissions.
 type UserPermissionsInput struct {
 	MemberID                string   `json:"id"`
 	AccessedProjects        []string `json:"accessedProjects"`
@@ -237,7 +237,7 @@ type UserPermissionsInput struct {
 	CanCreateEnvironments   bool     `json:"canCreateEnvironments"`
 }
 
-// AssignUserPermissions assigns permissions to a member
+// AssignUserPermissions assigns permissions to a member.
 func (c *DokployClient) AssignUserPermissions(input UserPermissionsInput) error {
 	payload := map[string]interface{}{
 		"id":                      input.MemberID,
@@ -261,7 +261,7 @@ func (c *DokployClient) AssignUserPermissions(input UserPermissionsInput) error 
 	return err
 }
 
-// ApiKeyCreateInput represents the input for creating an API key
+// ApiKeyCreateInput represents the input for creating an API key.
 type ApiKeyCreateInput struct {
 	Name                string            `json:"name"`
 	Metadata            map[string]string `json:"metadata"`
@@ -271,7 +271,7 @@ type ApiKeyCreateInput struct {
 	RateLimitTimeWindow *int64            `json:"rateLimitTimeWindow,omitempty"` // In milliseconds
 }
 
-// CreateApiKey creates a new API key
+// CreateApiKey creates a new API key.
 func (c *DokployClient) CreateApiKey(input ApiKeyCreateInput) (*ApiKey, error) {
 	payload := map[string]interface{}{
 		"name":     input.Name,
@@ -303,7 +303,7 @@ func (c *DokployClient) CreateApiKey(input ApiKeyCreateInput) (*ApiKey, error) {
 	return &apiKey, nil
 }
 
-// DeleteApiKey deletes an API key
+// DeleteApiKey deletes an API key.
 func (c *DokployClient) DeleteApiKey(apiKeyID string) error {
 	payload := map[string]string{
 		"apiKeyId": apiKeyID,
@@ -312,7 +312,7 @@ func (c *DokployClient) DeleteApiKey(apiKeyID string) error {
 	return err
 }
 
-// GetApiKeyByID retrieves an API key by ID from the current user's API keys
+// GetApiKeyByID retrieves an API key by ID from the current user's API keys.
 func (c *DokployClient) GetApiKeyByID(apiKeyID string) (*ApiKey, error) {
 	member, err := c.GetCurrentMember()
 	if err != nil {
