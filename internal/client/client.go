@@ -327,6 +327,127 @@ func (c *DokployClient) GetApiKeyByID(apiKeyID string) (*ApiKey, error) {
 	return nil, fmt.Errorf("API key with ID %s not found", apiKeyID)
 }
 
+// --- AI ---
+
+// AI represents an AI provider configuration.
+type AI struct {
+	ID             string `json:"aiId"`
+	Name           string `json:"name"`
+	ApiURL         string `json:"apiUrl"`
+	ApiKey         string `json:"apiKey"`
+	Model          string `json:"model"`
+	IsEnabled      bool   `json:"isEnabled"`
+	OrganizationID string `json:"organizationId"`
+	CreatedAt      string `json:"createdAt"`
+}
+
+// AIModel represents a model available from an AI provider.
+type AIModel struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
+}
+
+// CreateAI creates a new AI provider configuration.
+func (c *DokployClient) CreateAI(name, apiURL, apiKey, model string, isEnabled bool) (*AI, error) {
+	payload := map[string]interface{}{
+		"name":      name,
+		"apiUrl":    apiURL,
+		"apiKey":    apiKey,
+		"model":     model,
+		"isEnabled": isEnabled,
+	}
+
+	_, err := c.doRequest("POST", "ai.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// API returns empty array on success, need to fetch the created AI
+	ais, err := c.ListAIs()
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the newly created AI by name (most recent with matching name)
+	for i := len(ais) - 1; i >= 0; i-- {
+		if ais[i].Name == name {
+			return &ais[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find created AI configuration")
+}
+
+// GetAI retrieves an AI configuration by ID.
+func (c *DokployClient) GetAI(aiID string) (*AI, error) {
+	endpoint := fmt.Sprintf("ai.get?aiId=%s", aiID)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var ai AI
+	if err := json.Unmarshal(resp, &ai); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+	return &ai, nil
+}
+
+// ListAIs returns all AI configurations.
+func (c *DokployClient) ListAIs() ([]AI, error) {
+	resp, err := c.doRequest("GET", "ai.getAll", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var ais []AI
+	if err := json.Unmarshal(resp, &ais); err != nil {
+		return nil, fmt.Errorf("failed to parse AIs response: %w", err)
+	}
+	return ais, nil
+}
+
+// UpdateAI updates an AI configuration. Note: API requires all fields.
+func (c *DokployClient) UpdateAI(ai AI) error {
+	payload := map[string]interface{}{
+		"aiId":      ai.ID,
+		"name":      ai.Name,
+		"apiUrl":    ai.ApiURL,
+		"apiKey":    ai.ApiKey,
+		"model":     ai.Model,
+		"isEnabled": ai.IsEnabled,
+	}
+
+	_, err := c.doRequest("POST", "ai.update", payload)
+	return err
+}
+
+// DeleteAI deletes an AI configuration.
+func (c *DokployClient) DeleteAI(aiID string) error {
+	payload := map[string]string{
+		"aiId": aiID,
+	}
+	_, err := c.doRequest("POST", "ai.delete", payload)
+	return err
+}
+
+// GetAIModels retrieves available models from an AI provider.
+func (c *DokployClient) GetAIModels(apiURL, apiKey string) ([]AIModel, error) {
+	endpoint := fmt.Sprintf("ai.getModels?apiUrl=%s&apiKey=%s", apiURL, apiKey)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var models []AIModel
+	if err := json.Unmarshal(resp, &models); err != nil {
+		return nil, fmt.Errorf("failed to parse AI models response: %w", err)
+	}
+	return models, nil
+}
+
 // --- Project ---
 
 type Project struct {
