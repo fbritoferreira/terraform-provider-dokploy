@@ -29,21 +29,24 @@ resource "dokploy_backup" "daily" {
 
 ### Required
 
-- `database_id` (String) ID of the database to backup
-- `database_type` (String) Type of database: postgres, mysql, mariadb, or mongo
-- `destination_id` (String) ID of the backup destination (S3, MinIO, etc.)
-- `prefix` (String) Prefix for backup files
-- `schedule` (String) Cron schedule for backups (e.g., '0 2 * * *' for daily at 2 AM)
+- `database` (String) Database name to backup (for database backups) or identifier (for compose backups).
+- `destination_id` (String) ID of the backup destination (S3, MinIO, etc.).
+- `prefix` (String) Prefix for backup files.
+- `schedule` (String) Cron schedule for backups (e.g., '0 2 * * *' for daily at 2 AM).
 
 ### Optional
 
-- `database` (String) Database name to backup
-- `enabled` (Boolean) Whether the backup schedule is enabled
-- `keep_latest_count` (Number) Number of recent backups to keep (older ones are deleted)
+- `backup_type` (String) Type of backup: 'database' for database backups or 'compose' for compose service backups.
+- `compose_id` (String) ID of the compose to backup. Required when backup_type is 'compose'.
+- `database_id` (String) ID of the database to backup. Required when backup_type is 'database'.
+- `database_type` (String) Type of database: postgres, mysql, mariadb, or mongo. Required when backup_type is 'database'.
+- `enabled` (Boolean) Whether the backup schedule is enabled.
+- `keep_latest_count` (Number) Number of recent backups to keep (older ones are deleted).
+- `service_name` (String) Name of the service within the compose to backup. Required when backup_type is 'compose'.
 
 ### Read-Only
 
-- `id` (String) Unique identifier for the backup
+- `id` (String) Unique identifier for the backup.
 
 ## Import
 

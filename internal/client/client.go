@@ -76,34 +76,255 @@ func (c *DokployClient) doRequest(method, endpoint string, body interface{}) ([]
 
 // --- User ---
 
+// UserDetails represents the nested user object in OrganizationMember
+type UserDetails struct {
+	ID                 string   `json:"id"`
+	FirstName          string   `json:"firstName"`
+	LastName           string   `json:"lastName"`
+	Email              string   `json:"email"`
+	EmailVerified      bool     `json:"emailVerified"`
+	TwoFactorEnabled   bool     `json:"twoFactorEnabled"`
+	CreatedAt          string   `json:"createdAt"`
+	UpdatedAt          string   `json:"updatedAt"`
+	Image              *string  `json:"image"`
+	Role               string   `json:"role"`
+	IsRegistered       bool     `json:"isRegistered"`
+	EnablePaidFeatures bool     `json:"enablePaidFeatures"`
+	AllowImpersonation bool     `json:"allowImpersonation"`
+	ServersQuantity    int      `json:"serversQuantity"`
+	ApiKeys            []ApiKey `json:"apiKeys,omitempty"`
+}
+
+// ApiKey represents an API key
+type ApiKey struct {
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	Start               string  `json:"start"`
+	Key                 string  `json:"key,omitempty"` // Only returned on creation
+	UserID              string  `json:"userId"`
+	Enabled             bool    `json:"enabled"`
+	RateLimitEnabled    bool    `json:"rateLimitEnabled"`
+	RateLimitTimeWindow int64   `json:"rateLimitTimeWindow"`
+	RateLimitMax        int     `json:"rateLimitMax"`
+	RequestCount        int     `json:"requestCount"`
+	ExpiresAt           *string `json:"expiresAt"`
+	CreatedAt           string  `json:"createdAt"`
+	UpdatedAt           string  `json:"updatedAt"`
+	LastRequest         *string `json:"lastRequest"`
+	Metadata            *string `json:"metadata"`
+}
+
+// OrganizationMember represents a user's membership in an organization
+type OrganizationMember struct {
+	ID                      string      `json:"id"` // Member ID
+	OrganizationID          string      `json:"organizationId"`
+	UserID                  string      `json:"userId"`
+	Role                    string      `json:"role"`
+	CreatedAt               string      `json:"createdAt"`
+	TeamID                  *string     `json:"teamId"`
+	IsDefault               bool        `json:"isDefault"`
+	CanCreateProjects       bool        `json:"canCreateProjects"`
+	CanAccessToSSHKeys      bool        `json:"canAccessToSSHKeys"`
+	CanCreateServices       bool        `json:"canCreateServices"`
+	CanDeleteProjects       bool        `json:"canDeleteProjects"`
+	CanDeleteServices       bool        `json:"canDeleteServices"`
+	CanAccessToDocker       bool        `json:"canAccessToDocker"`
+	CanAccessToAPI          bool        `json:"canAccessToAPI"`
+	CanAccessToGitProviders bool        `json:"canAccessToGitProviders"`
+	CanAccessToTraefikFiles bool        `json:"canAccessToTraefikFiles"`
+	CanDeleteEnvironments   bool        `json:"canDeleteEnvironments"`
+	CanCreateEnvironments   bool        `json:"canCreateEnvironments"`
+	AccessedProjects        []string    `json:"accessedProjects"`
+	AccessedEnvironments    []string    `json:"accessedEnvironments"`
+	AccessedServices        []string    `json:"accessedServices"`
+	User                    UserDetails `json:"user"`
+}
+
+// User is a simplified user struct for backward compatibility
 type User struct {
 	ID             string `json:"userId"`
 	Email          string `json:"email"`
 	OrganizationID string `json:"organizationId"`
 }
 
+// GetUser returns the basic user info (backward compatible)
 func (c *DokployClient) GetUser() (*User, error) {
+	member, err := c.GetCurrentMember()
+	if err != nil {
+		return nil, err
+	}
+	return &User{
+		ID:             member.UserID,
+		Email:          member.User.Email,
+		OrganizationID: member.OrganizationID,
+	}, nil
+}
+
+// GetCurrentMember returns the full organization member info for the current user
+func (c *DokployClient) GetCurrentMember() (*OrganizationMember, error) {
 	resp, err := c.doRequest("GET", "user.get", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var wrapper struct {
-		User User `json:"user"` // Assuming wrapper based on other endpoints
+	var member OrganizationMember
+	if err := json.Unmarshal(resp, &member); err != nil {
+		return nil, fmt.Errorf("failed to parse user response: %w", err)
 	}
-	if err := json.Unmarshal(resp, &wrapper); err == nil && wrapper.User.ID != "" {
-		// If org ID is missing on user, maybe we check roles/orgs?
-		// For now assuming simple case.
-		return &wrapper.User, nil
+	return &member, nil
+}
+
+// ListMembers returns all organization members
+func (c *DokployClient) ListMembers() ([]OrganizationMember, error) {
+	resp, err := c.doRequest("GET", "user.all", nil)
+	if err != nil {
+		return nil, err
 	}
 
-	// Try direct
-	var user User
-	if err := json.Unmarshal(resp, &user); err == nil && user.ID != "" {
-		return &user, nil
+	var members []OrganizationMember
+	if err := json.Unmarshal(resp, &members); err != nil {
+		return nil, fmt.Errorf("failed to parse users response: %w", err)
+	}
+	return members, nil
+}
+
+// GetMemberByUserID finds a member by their user ID
+func (c *DokployClient) GetMemberByUserID(userID string) (*OrganizationMember, error) {
+	members, err := c.ListMembers()
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("failed to parse user response")
+	for _, m := range members {
+		if m.UserID == userID {
+			return &m, nil
+		}
+	}
+	return nil, fmt.Errorf("member with user ID %s not found", userID)
+}
+
+// GetMemberByID finds a member by their member ID
+func (c *DokployClient) GetMemberByID(memberID string) (*OrganizationMember, error) {
+	members, err := c.ListMembers()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, m := range members {
+		if m.ID == memberID {
+			return &m, nil
+		}
+	}
+	return nil, fmt.Errorf("member with ID %s not found", memberID)
+}
+
+// UserPermissionsInput represents the input for assigning permissions
+type UserPermissionsInput struct {
+	MemberID                string   `json:"id"`
+	AccessedProjects        []string `json:"accessedProjects"`
+	AccessedEnvironments    []string `json:"accessedEnvironments"`
+	AccessedServices        []string `json:"accessedServices"`
+	CanCreateProjects       bool     `json:"canCreateProjects"`
+	CanCreateServices       bool     `json:"canCreateServices"`
+	CanDeleteProjects       bool     `json:"canDeleteProjects"`
+	CanDeleteServices       bool     `json:"canDeleteServices"`
+	CanAccessToDocker       bool     `json:"canAccessToDocker"`
+	CanAccessToTraefikFiles bool     `json:"canAccessToTraefikFiles"`
+	CanAccessToAPI          bool     `json:"canAccessToAPI"`
+	CanAccessToSSHKeys      bool     `json:"canAccessToSSHKeys"`
+	CanAccessToGitProviders bool     `json:"canAccessToGitProviders"`
+	CanDeleteEnvironments   bool     `json:"canDeleteEnvironments"`
+	CanCreateEnvironments   bool     `json:"canCreateEnvironments"`
+}
+
+// AssignUserPermissions assigns permissions to a member
+func (c *DokployClient) AssignUserPermissions(input UserPermissionsInput) error {
+	payload := map[string]interface{}{
+		"id":                      input.MemberID,
+		"accessedProjects":        input.AccessedProjects,
+		"accessedEnvironments":    input.AccessedEnvironments,
+		"accessedServices":        input.AccessedServices,
+		"canCreateProjects":       input.CanCreateProjects,
+		"canCreateServices":       input.CanCreateServices,
+		"canDeleteProjects":       input.CanDeleteProjects,
+		"canDeleteServices":       input.CanDeleteServices,
+		"canAccessToDocker":       input.CanAccessToDocker,
+		"canAccessToTraefikFiles": input.CanAccessToTraefikFiles,
+		"canAccessToAPI":          input.CanAccessToAPI,
+		"canAccessToSSHKeys":      input.CanAccessToSSHKeys,
+		"canAccessToGitProviders": input.CanAccessToGitProviders,
+		"canDeleteEnvironments":   input.CanDeleteEnvironments,
+		"canCreateEnvironments":   input.CanCreateEnvironments,
+	}
+
+	_, err := c.doRequest("POST", "user.assignPermissions", payload)
+	return err
+}
+
+// ApiKeyCreateInput represents the input for creating an API key
+type ApiKeyCreateInput struct {
+	Name                string            `json:"name"`
+	Metadata            map[string]string `json:"metadata"`
+	ExpiresIn           *int64            `json:"expiresIn,omitempty"` // In seconds, min 86400 (1 day)
+	RateLimitEnabled    *bool             `json:"rateLimitEnabled,omitempty"`
+	RateLimitMax        *int              `json:"rateLimitMax,omitempty"`
+	RateLimitTimeWindow *int64            `json:"rateLimitTimeWindow,omitempty"` // In milliseconds
+}
+
+// CreateApiKey creates a new API key
+func (c *DokployClient) CreateApiKey(input ApiKeyCreateInput) (*ApiKey, error) {
+	payload := map[string]interface{}{
+		"name":     input.Name,
+		"metadata": input.Metadata,
+	}
+
+	if input.ExpiresIn != nil {
+		payload["expiresIn"] = *input.ExpiresIn
+	}
+	if input.RateLimitEnabled != nil {
+		payload["rateLimitEnabled"] = *input.RateLimitEnabled
+	}
+	if input.RateLimitMax != nil {
+		payload["rateLimitMax"] = *input.RateLimitMax
+	}
+	if input.RateLimitTimeWindow != nil {
+		payload["rateLimitTimeWindow"] = *input.RateLimitTimeWindow
+	}
+
+	resp, err := c.doRequest("POST", "user.createApiKey", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var apiKey ApiKey
+	if err := json.Unmarshal(resp, &apiKey); err != nil {
+		return nil, fmt.Errorf("failed to parse API key response: %w", err)
+	}
+	return &apiKey, nil
+}
+
+// DeleteApiKey deletes an API key
+func (c *DokployClient) DeleteApiKey(apiKeyID string) error {
+	payload := map[string]string{
+		"apiKeyId": apiKeyID,
+	}
+	_, err := c.doRequest("POST", "user.deleteApiKey", payload)
+	return err
+}
+
+// GetApiKeyByID retrieves an API key by ID from the current user's API keys
+func (c *DokployClient) GetApiKeyByID(apiKeyID string) (*ApiKey, error) {
+	member, err := c.GetCurrentMember()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, key := range member.User.ApiKeys {
+		if key.ID == apiKeyID {
+			return &key, nil
+		}
+	}
+	return nil, fmt.Errorf("API key with ID %s not found", apiKeyID)
 }
 
 // --- Project ---
@@ -2911,29 +3132,39 @@ func (c *DokployClient) CreateBackup(backup Backup) (*Backup, error) {
 	}
 
 	// Handle empty response from buggy Dokploy API (backup.create doesn't return the created backup)
-	// WORKAROUND: Query the database endpoint which includes backups, then find our newly created backup
+	// WORKAROUND: Query the database/compose endpoint which includes backups, then find our newly created backup
 	if len(resp) == 0 {
-		// Get the database ID based on type
-		var databaseID string
-		switch backup.DatabaseType {
-		case "postgres":
-			databaseID = backup.PostgresID
-		case "mysql":
-			databaseID = backup.MysqlID
-		case "mariadb":
-			databaseID = backup.MariadbID
-		case "mongo":
-			databaseID = backup.MongoID
-		}
+		var backups []Backup
+		var err error
 
-		if databaseID == "" {
-			return nil, fmt.Errorf("backup.create returned empty response and no database ID available to lookup backup")
-		}
+		if backup.BackupType == "compose" && backup.ComposeID != "" {
+			// For compose backups, query the compose endpoint
+			backups, err = c.GetBackupsByComposeID(backup.ComposeID)
+			if err != nil {
+				return nil, fmt.Errorf("backup.create returned empty response, failed to lookup compose backup: %w", err)
+			}
+		} else {
+			// For database backups, query the database endpoint
+			var databaseID string
+			switch backup.DatabaseType {
+			case "postgres":
+				databaseID = backup.PostgresID
+			case "mysql":
+				databaseID = backup.MysqlID
+			case "mariadb":
+				databaseID = backup.MariadbID
+			case "mongo":
+				databaseID = backup.MongoID
+			}
 
-		// Query the database to get its backups
-		backups, err := c.GetBackupsByDatabaseID(databaseID, backup.DatabaseType)
-		if err != nil {
-			return nil, fmt.Errorf("backup.create returned empty response, failed to lookup backup: %w", err)
+			if databaseID == "" {
+				return nil, fmt.Errorf("backup.create returned empty response and no database ID available to lookup backup")
+			}
+
+			backups, err = c.GetBackupsByDatabaseID(databaseID, backup.DatabaseType)
+			if err != nil {
+				return nil, fmt.Errorf("backup.create returned empty response, failed to lookup backup: %w", err)
+			}
 		}
 
 		// Find our backup by matching unique parameters
@@ -2945,7 +3176,7 @@ func (c *DokployClient) CreateBackup(backup Backup) (*Backup, error) {
 			}
 		}
 
-		return nil, fmt.Errorf("backup.create returned empty response and could not find created backup in database backups list")
+		return nil, fmt.Errorf("backup.create returned empty response and could not find created backup")
 	}
 
 	var result Backup
@@ -3012,6 +3243,37 @@ func (c *DokployClient) DeleteBackup(id string) error {
 	return err
 }
 
+// BackupFile represents a backup file in the destination storage.
+type BackupFile struct {
+	Key          string `json:"Key"`
+	LastModified string `json:"LastModified"`
+	Size         int64  `json:"Size"`
+	ETag         string `json:"ETag"`
+	StorageClass string `json:"StorageClass"`
+}
+
+// ListBackupFiles retrieves a list of backup files from a destination.
+// search is a required prefix filter for the backup files.
+// serverId is optional and filters by server.
+func (c *DokployClient) ListBackupFiles(destinationID, search, serverID string) ([]BackupFile, error) {
+	endpoint := fmt.Sprintf("backup.listBackupFiles?destinationId=%s&search=%s", destinationID, search)
+	if serverID != "" {
+		endpoint += fmt.Sprintf("&serverId=%s", serverID)
+	}
+
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []BackupFile
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse backup files response: %w", err)
+	}
+
+	return result, nil
+}
+
 // GetBackupsByDatabaseID retrieves all backups for a specific database
 // by querying the database endpoint which includes backups in its response.
 func (c *DokployClient) GetBackupsByDatabaseID(databaseID, databaseType string) ([]Backup, error) {
@@ -3040,6 +3302,27 @@ func (c *DokployClient) GetBackupsByDatabaseID(databaseID, databaseType string) 
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse database response: %w", err)
+	}
+
+	return result.Backups, nil
+}
+
+// GetBackupsByComposeID retrieves all backups for a specific compose
+// by querying the compose endpoint which includes backups in its response.
+func (c *DokployClient) GetBackupsByComposeID(composeID string) ([]Backup, error) {
+	endpoint := fmt.Sprintf("compose.one?composeId=%s", composeID)
+
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// The compose response includes a "backups" array
+	var result struct {
+		Backups []Backup `json:"backups"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse compose response: %w", err)
 	}
 
 	return result.Backups, nil
@@ -3112,6 +3395,620 @@ func (c *DokployClient) DeleteServer(id string) error {
 	_, err := c.doRequest("POST", "server.remove", payload)
 	return err
 }
+
+// --- Postgres ---
+
+// Postgres represents a PostgreSQL database instance.
+type Postgres struct {
+	PostgresID        string `json:"postgresId"`
+	Name              string `json:"name"`
+	AppName           string `json:"appName"`
+	Description       string `json:"description"`
+	DatabaseName      string `json:"databaseName"`
+	DatabaseUser      string `json:"databaseUser"`
+	DatabasePassword  string `json:"databasePassword"`
+	DockerImage       string `json:"dockerImage"`
+	Command           string `json:"command"`
+	Env               string `json:"env"`
+	MemoryReservation string `json:"memoryReservation"`
+	MemoryLimit       string `json:"memoryLimit"`
+	CPUReservation    string `json:"cpuReservation"`
+	CPULimit          string `json:"cpuLimit"`
+	ExternalPort      int    `json:"externalPort"`
+	EnvironmentID     string `json:"environmentId"`
+	ApplicationStatus string `json:"applicationStatus"`
+	Replicas          int    `json:"replicas"`
+	ServerID          string `json:"serverId"`
+}
+
+// CreatePostgres creates a new PostgreSQL database instance.
+func (c *DokployClient) CreatePostgres(postgres Postgres) (*Postgres, error) {
+	payload := map[string]interface{}{
+		"name":             postgres.Name,
+		"appName":          postgres.AppName,
+		"databaseName":     postgres.DatabaseName,
+		"databaseUser":     postgres.DatabaseUser,
+		"databasePassword": postgres.DatabasePassword,
+		"environmentId":    postgres.EnvironmentID,
+	}
+
+	if postgres.DockerImage != "" {
+		payload["dockerImage"] = postgres.DockerImage
+	}
+	if postgres.Description != "" {
+		payload["description"] = postgres.Description
+	}
+	if postgres.ServerID != "" {
+		payload["serverId"] = postgres.ServerID
+	}
+
+	resp, err := c.doRequest("POST", "postgres.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Postgres
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal postgres response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetPostgres retrieves a PostgreSQL instance by ID.
+func (c *DokployClient) GetPostgres(id string) (*Postgres, error) {
+	endpoint := fmt.Sprintf("postgres.one?postgresId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Postgres
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdatePostgres updates an existing PostgreSQL instance.
+func (c *DokployClient) UpdatePostgres(postgres Postgres) (*Postgres, error) {
+	payload := map[string]interface{}{
+		"postgresId": postgres.PostgresID,
+	}
+
+	if postgres.Name != "" {
+		payload["name"] = postgres.Name
+	}
+	if postgres.AppName != "" {
+		payload["appName"] = postgres.AppName
+	}
+	if postgres.Description != "" {
+		payload["description"] = postgres.Description
+	}
+	if postgres.DatabaseName != "" {
+		payload["databaseName"] = postgres.DatabaseName
+	}
+	if postgres.DatabaseUser != "" {
+		payload["databaseUser"] = postgres.DatabaseUser
+	}
+	if postgres.DatabasePassword != "" {
+		payload["databasePassword"] = postgres.DatabasePassword
+	}
+	if postgres.DockerImage != "" {
+		payload["dockerImage"] = postgres.DockerImage
+	}
+	if postgres.Command != "" {
+		payload["command"] = postgres.Command
+	}
+	if postgres.Env != "" {
+		payload["env"] = postgres.Env
+	}
+	if postgres.MemoryReservation != "" {
+		payload["memoryReservation"] = postgres.MemoryReservation
+	}
+	if postgres.MemoryLimit != "" {
+		payload["memoryLimit"] = postgres.MemoryLimit
+	}
+	if postgres.CPUReservation != "" {
+		payload["cpuReservation"] = postgres.CPUReservation
+	}
+	if postgres.CPULimit != "" {
+		payload["cpuLimit"] = postgres.CPULimit
+	}
+	if postgres.ExternalPort > 0 {
+		payload["externalPort"] = postgres.ExternalPort
+	}
+	if postgres.Replicas > 0 {
+		payload["replicas"] = postgres.Replicas
+	}
+
+	resp, err := c.doRequest("POST", "postgres.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp) == 0 {
+		return c.GetPostgres(postgres.PostgresID)
+	}
+
+	var result Postgres
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return c.GetPostgres(postgres.PostgresID)
+	}
+	return &result, nil
+}
+
+// DeletePostgres removes a PostgreSQL instance by ID.
+func (c *DokployClient) DeletePostgres(id string) error {
+	payload := map[string]string{
+		"postgresId": id,
+	}
+	_, err := c.doRequest("POST", "postgres.remove", payload)
+	return err
+}
+
+// --- MySQL ---
+
+// MySQL represents a MySQL database instance.
+type MySQL struct {
+	MySQLID              string `json:"mysqlId"`
+	Name                 string `json:"name"`
+	AppName              string `json:"appName"`
+	Description          string `json:"description"`
+	DatabaseName         string `json:"databaseName"`
+	DatabaseUser         string `json:"databaseUser"`
+	DatabasePassword     string `json:"databasePassword"`
+	DatabaseRootPassword string `json:"databaseRootPassword"`
+	DockerImage          string `json:"dockerImage"`
+	Command              string `json:"command"`
+	Env                  string `json:"env"`
+	MemoryReservation    string `json:"memoryReservation"`
+	MemoryLimit          string `json:"memoryLimit"`
+	CPUReservation       string `json:"cpuReservation"`
+	CPULimit             string `json:"cpuLimit"`
+	ExternalPort         int    `json:"externalPort"`
+	EnvironmentID        string `json:"environmentId"`
+	ApplicationStatus    string `json:"applicationStatus"`
+	Replicas             int    `json:"replicas"`
+	ServerID             string `json:"serverId"`
+}
+
+// CreateMySQL creates a new MySQL database instance.
+func (c *DokployClient) CreateMySQL(mysql MySQL) (*MySQL, error) {
+	payload := map[string]interface{}{
+		"name":                 mysql.Name,
+		"appName":              mysql.AppName,
+		"databaseName":         mysql.DatabaseName,
+		"databaseUser":         mysql.DatabaseUser,
+		"databasePassword":     mysql.DatabasePassword,
+		"databaseRootPassword": mysql.DatabaseRootPassword,
+		"environmentId":        mysql.EnvironmentID,
+	}
+
+	if mysql.DockerImage != "" {
+		payload["dockerImage"] = mysql.DockerImage
+	}
+	if mysql.Description != "" {
+		payload["description"] = mysql.Description
+	}
+	if mysql.ServerID != "" {
+		payload["serverId"] = mysql.ServerID
+	}
+
+	resp, err := c.doRequest("POST", "mysql.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MySQL
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal mysql response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetMySQL retrieves a MySQL instance by ID.
+func (c *DokployClient) GetMySQL(id string) (*MySQL, error) {
+	endpoint := fmt.Sprintf("mysql.one?mysqlId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MySQL
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdateMySQL updates an existing MySQL instance.
+func (c *DokployClient) UpdateMySQL(mysql MySQL) (*MySQL, error) {
+	payload := map[string]interface{}{
+		"mysqlId": mysql.MySQLID,
+	}
+
+	if mysql.Name != "" {
+		payload["name"] = mysql.Name
+	}
+	if mysql.AppName != "" {
+		payload["appName"] = mysql.AppName
+	}
+	if mysql.Description != "" {
+		payload["description"] = mysql.Description
+	}
+	if mysql.DatabaseName != "" {
+		payload["databaseName"] = mysql.DatabaseName
+	}
+	if mysql.DatabaseUser != "" {
+		payload["databaseUser"] = mysql.DatabaseUser
+	}
+	if mysql.DatabasePassword != "" {
+		payload["databasePassword"] = mysql.DatabasePassword
+	}
+	if mysql.DatabaseRootPassword != "" {
+		payload["databaseRootPassword"] = mysql.DatabaseRootPassword
+	}
+	if mysql.DockerImage != "" {
+		payload["dockerImage"] = mysql.DockerImage
+	}
+	if mysql.Command != "" {
+		payload["command"] = mysql.Command
+	}
+	if mysql.Env != "" {
+		payload["env"] = mysql.Env
+	}
+	if mysql.MemoryReservation != "" {
+		payload["memoryReservation"] = mysql.MemoryReservation
+	}
+	if mysql.MemoryLimit != "" {
+		payload["memoryLimit"] = mysql.MemoryLimit
+	}
+	if mysql.CPUReservation != "" {
+		payload["cpuReservation"] = mysql.CPUReservation
+	}
+	if mysql.CPULimit != "" {
+		payload["cpuLimit"] = mysql.CPULimit
+	}
+	if mysql.ExternalPort > 0 {
+		payload["externalPort"] = mysql.ExternalPort
+	}
+	if mysql.Replicas > 0 {
+		payload["replicas"] = mysql.Replicas
+	}
+
+	resp, err := c.doRequest("POST", "mysql.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp) == 0 {
+		return c.GetMySQL(mysql.MySQLID)
+	}
+
+	var result MySQL
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return c.GetMySQL(mysql.MySQLID)
+	}
+	return &result, nil
+}
+
+// DeleteMySQL removes a MySQL instance by ID.
+func (c *DokployClient) DeleteMySQL(id string) error {
+	payload := map[string]string{
+		"mysqlId": id,
+	}
+	_, err := c.doRequest("POST", "mysql.remove", payload)
+	return err
+}
+
+// --- MariaDB ---
+
+// MariaDB represents a MariaDB database instance.
+type MariaDB struct {
+	MariaDBID            string `json:"mariadbId"`
+	Name                 string `json:"name"`
+	AppName              string `json:"appName"`
+	Description          string `json:"description"`
+	DatabaseName         string `json:"databaseName"`
+	DatabaseUser         string `json:"databaseUser"`
+	DatabasePassword     string `json:"databasePassword"`
+	DatabaseRootPassword string `json:"databaseRootPassword"`
+	DockerImage          string `json:"dockerImage"`
+	Command              string `json:"command"`
+	Env                  string `json:"env"`
+	MemoryReservation    string `json:"memoryReservation"`
+	MemoryLimit          string `json:"memoryLimit"`
+	CPUReservation       string `json:"cpuReservation"`
+	CPULimit             string `json:"cpuLimit"`
+	ExternalPort         int    `json:"externalPort"`
+	EnvironmentID        string `json:"environmentId"`
+	ApplicationStatus    string `json:"applicationStatus"`
+	Replicas             int    `json:"replicas"`
+	ServerID             string `json:"serverId"`
+}
+
+// CreateMariaDB creates a new MariaDB database instance.
+func (c *DokployClient) CreateMariaDB(mariadb MariaDB) (*MariaDB, error) {
+	payload := map[string]interface{}{
+		"name":                 mariadb.Name,
+		"appName":              mariadb.AppName,
+		"databaseName":         mariadb.DatabaseName,
+		"databaseUser":         mariadb.DatabaseUser,
+		"databasePassword":     mariadb.DatabasePassword,
+		"databaseRootPassword": mariadb.DatabaseRootPassword,
+		"environmentId":        mariadb.EnvironmentID,
+	}
+
+	if mariadb.DockerImage != "" {
+		payload["dockerImage"] = mariadb.DockerImage
+	}
+	if mariadb.Description != "" {
+		payload["description"] = mariadb.Description
+	}
+	if mariadb.ServerID != "" {
+		payload["serverId"] = mariadb.ServerID
+	}
+
+	resp, err := c.doRequest("POST", "mariadb.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MariaDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal mariadb response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetMariaDB retrieves a MariaDB instance by ID.
+func (c *DokployClient) GetMariaDB(id string) (*MariaDB, error) {
+	endpoint := fmt.Sprintf("mariadb.one?mariadbId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MariaDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdateMariaDB updates an existing MariaDB instance.
+func (c *DokployClient) UpdateMariaDB(mariadb MariaDB) (*MariaDB, error) {
+	payload := map[string]interface{}{
+		"mariadbId": mariadb.MariaDBID,
+	}
+
+	if mariadb.Name != "" {
+		payload["name"] = mariadb.Name
+	}
+	if mariadb.AppName != "" {
+		payload["appName"] = mariadb.AppName
+	}
+	if mariadb.Description != "" {
+		payload["description"] = mariadb.Description
+	}
+	if mariadb.DatabaseName != "" {
+		payload["databaseName"] = mariadb.DatabaseName
+	}
+	if mariadb.DatabaseUser != "" {
+		payload["databaseUser"] = mariadb.DatabaseUser
+	}
+	if mariadb.DatabasePassword != "" {
+		payload["databasePassword"] = mariadb.DatabasePassword
+	}
+	if mariadb.DatabaseRootPassword != "" {
+		payload["databaseRootPassword"] = mariadb.DatabaseRootPassword
+	}
+	if mariadb.DockerImage != "" {
+		payload["dockerImage"] = mariadb.DockerImage
+	}
+	if mariadb.Command != "" {
+		payload["command"] = mariadb.Command
+	}
+	if mariadb.Env != "" {
+		payload["env"] = mariadb.Env
+	}
+	if mariadb.MemoryReservation != "" {
+		payload["memoryReservation"] = mariadb.MemoryReservation
+	}
+	if mariadb.MemoryLimit != "" {
+		payload["memoryLimit"] = mariadb.MemoryLimit
+	}
+	if mariadb.CPUReservation != "" {
+		payload["cpuReservation"] = mariadb.CPUReservation
+	}
+	if mariadb.CPULimit != "" {
+		payload["cpuLimit"] = mariadb.CPULimit
+	}
+	if mariadb.ExternalPort > 0 {
+		payload["externalPort"] = mariadb.ExternalPort
+	}
+	if mariadb.Replicas > 0 {
+		payload["replicas"] = mariadb.Replicas
+	}
+
+	resp, err := c.doRequest("POST", "mariadb.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp) == 0 {
+		return c.GetMariaDB(mariadb.MariaDBID)
+	}
+
+	var result MariaDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return c.GetMariaDB(mariadb.MariaDBID)
+	}
+	return &result, nil
+}
+
+// DeleteMariaDB removes a MariaDB instance by ID.
+func (c *DokployClient) DeleteMariaDB(id string) error {
+	payload := map[string]string{
+		"mariadbId": id,
+	}
+	_, err := c.doRequest("POST", "mariadb.remove", payload)
+	return err
+}
+
+// --- MongoDB ---
+
+// MongoDB represents a MongoDB database instance.
+type MongoDB struct {
+	MongoID           string `json:"mongoId"`
+	Name              string `json:"name"`
+	AppName           string `json:"appName"`
+	Description       string `json:"description"`
+	DatabaseUser      string `json:"databaseUser"`
+	DatabasePassword  string `json:"databasePassword"`
+	ReplicaSets       bool   `json:"replicaSets"`
+	DockerImage       string `json:"dockerImage"`
+	Command           string `json:"command"`
+	Env               string `json:"env"`
+	MemoryReservation string `json:"memoryReservation"`
+	MemoryLimit       string `json:"memoryLimit"`
+	CPUReservation    string `json:"cpuReservation"`
+	CPULimit          string `json:"cpuLimit"`
+	ExternalPort      int    `json:"externalPort"`
+	EnvironmentID     string `json:"environmentId"`
+	ApplicationStatus string `json:"applicationStatus"`
+	Replicas          int    `json:"replicas"`
+	ServerID          string `json:"serverId"`
+}
+
+// CreateMongoDB creates a new MongoDB database instance.
+func (c *DokployClient) CreateMongoDB(mongo MongoDB) (*MongoDB, error) {
+	payload := map[string]interface{}{
+		"name":             mongo.Name,
+		"appName":          mongo.AppName,
+		"databaseUser":     mongo.DatabaseUser,
+		"databasePassword": mongo.DatabasePassword,
+		"environmentId":    mongo.EnvironmentID,
+	}
+
+	if mongo.DockerImage != "" {
+		payload["dockerImage"] = mongo.DockerImage
+	}
+	if mongo.Description != "" {
+		payload["description"] = mongo.Description
+	}
+	if mongo.ServerID != "" {
+		payload["serverId"] = mongo.ServerID
+	}
+	// ReplicaSets defaults to false, only include if true
+	if mongo.ReplicaSets {
+		payload["replicaSets"] = mongo.ReplicaSets
+	}
+
+	resp, err := c.doRequest("POST", "mongo.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MongoDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal mongo response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetMongoDB retrieves a MongoDB instance by ID.
+func (c *DokployClient) GetMongoDB(id string) (*MongoDB, error) {
+	endpoint := fmt.Sprintf("mongo.one?mongoId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result MongoDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdateMongoDB updates an existing MongoDB instance.
+func (c *DokployClient) UpdateMongoDB(mongo MongoDB) (*MongoDB, error) {
+	payload := map[string]interface{}{
+		"mongoId": mongo.MongoID,
+	}
+
+	if mongo.Name != "" {
+		payload["name"] = mongo.Name
+	}
+	if mongo.AppName != "" {
+		payload["appName"] = mongo.AppName
+	}
+	if mongo.Description != "" {
+		payload["description"] = mongo.Description
+	}
+	if mongo.DatabaseUser != "" {
+		payload["databaseUser"] = mongo.DatabaseUser
+	}
+	if mongo.DatabasePassword != "" {
+		payload["databasePassword"] = mongo.DatabasePassword
+	}
+	// Always include replicaSets in update since it's a boolean
+	payload["replicaSets"] = mongo.ReplicaSets
+	if mongo.DockerImage != "" {
+		payload["dockerImage"] = mongo.DockerImage
+	}
+	if mongo.Command != "" {
+		payload["command"] = mongo.Command
+	}
+	if mongo.Env != "" {
+		payload["env"] = mongo.Env
+	}
+	if mongo.MemoryReservation != "" {
+		payload["memoryReservation"] = mongo.MemoryReservation
+	}
+	if mongo.MemoryLimit != "" {
+		payload["memoryLimit"] = mongo.MemoryLimit
+	}
+	if mongo.CPUReservation != "" {
+		payload["cpuReservation"] = mongo.CPUReservation
+	}
+	if mongo.CPULimit != "" {
+		payload["cpuLimit"] = mongo.CPULimit
+	}
+	if mongo.ExternalPort > 0 {
+		payload["externalPort"] = mongo.ExternalPort
+	}
+	if mongo.Replicas > 0 {
+		payload["replicas"] = mongo.Replicas
+	}
+
+	resp, err := c.doRequest("POST", "mongo.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp) == 0 {
+		return c.GetMongoDB(mongo.MongoID)
+	}
+
+	var result MongoDB
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return c.GetMongoDB(mongo.MongoID)
+	}
+	return &result, nil
+}
+
+// DeleteMongoDB removes a MongoDB instance by ID.
+func (c *DokployClient) DeleteMongoDB(id string) error {
+	payload := map[string]string{
+		"mongoId": id,
+	}
+	_, err := c.doRequest("POST", "mongo.remove", payload)
+	return err
+}
+
+// --- Redis ---
 
 // Redis represents a Redis database instance.
 type Redis struct {
@@ -3830,4 +4727,239 @@ func (c *DokployClient) ListGiteaProviders() ([]GiteaProviderListItem, error) {
 	}
 
 	return nil, fmt.Errorf("failed to parse gitea providers response")
+}
+
+// --- Organization ---
+
+type Organization struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Slug      *string `json:"slug"`
+	Logo      *string `json:"logo"`
+	CreatedAt string  `json:"createdAt"`
+	OwnerID   string  `json:"ownerId"`
+}
+
+func (c *DokployClient) CreateOrganization(name string, logo *string) (*Organization, error) {
+	payload := map[string]interface{}{
+		"name": name,
+	}
+	if logo != nil && *logo != "" {
+		payload["logo"] = *logo
+	}
+
+	resp, err := c.doRequest("POST", "organization.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Organization
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) GetOrganization(id string) (*Organization, error) {
+	endpoint := fmt.Sprintf("organization.one?organizationId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Organization
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) UpdateOrganization(org Organization) (*Organization, error) {
+	payload := map[string]interface{}{
+		"organizationId": org.ID,
+		"name":           org.Name,
+	}
+	if org.Logo != nil && *org.Logo != "" {
+		payload["logo"] = *org.Logo
+	}
+
+	resp, err := c.doRequest("POST", "organization.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Organization
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) DeleteOrganization(id string) error {
+	payload := map[string]string{
+		"organizationId": id,
+	}
+	_, err := c.doRequest("POST", "organization.delete", payload)
+	return err
+}
+
+func (c *DokployClient) ListOrganizations() ([]Organization, error) {
+	resp, err := c.doRequest("GET", "organization.all", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Organization
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// --- Volume Backup ---
+
+type VolumeBackup struct {
+	VolumeBackupID  string  `json:"volumeBackupId"`
+	Name            string  `json:"name"`
+	VolumeName      string  `json:"volumeName"`
+	Prefix          string  `json:"prefix"`
+	ServiceType     string  `json:"serviceType"`
+	AppName         string  `json:"appName"`
+	ServiceName     *string `json:"serviceName"`
+	TurnOff         bool    `json:"turnOff"`
+	CronExpression  string  `json:"cronExpression"`
+	KeepLatestCount int     `json:"keepLatestCount"`
+	Enabled         bool    `json:"enabled"`
+	DestinationID   string  `json:"destinationId"`
+	CreatedAt       string  `json:"createdAt"`
+	// Service IDs (only one will be set based on serviceType)
+	ApplicationID *string `json:"applicationId"`
+	PostgresID    *string `json:"postgresId"`
+	MariadbID     *string `json:"mariadbId"`
+	MongoID       *string `json:"mongoId"`
+	MysqlID       *string `json:"mysqlId"`
+	RedisID       *string `json:"redisId"`
+	ComposeID     *string `json:"composeId"`
+}
+
+func (c *DokployClient) CreateVolumeBackup(backup VolumeBackup) (*VolumeBackup, error) {
+	payload := map[string]interface{}{
+		"name":           backup.Name,
+		"volumeName":     backup.VolumeName,
+		"prefix":         backup.Prefix,
+		"cronExpression": backup.CronExpression,
+		"destinationId":  backup.DestinationID,
+		"serviceType":    backup.ServiceType,
+		"appName":        backup.AppName,
+	}
+
+	if backup.ServiceName != nil && *backup.ServiceName != "" {
+		payload["serviceName"] = *backup.ServiceName
+	}
+	if backup.KeepLatestCount > 0 {
+		payload["keepLatestCount"] = backup.KeepLatestCount
+	}
+	payload["turnOff"] = backup.TurnOff
+	payload["enabled"] = backup.Enabled
+
+	// Set the appropriate service ID based on service type
+	if backup.ApplicationID != nil {
+		payload["applicationId"] = *backup.ApplicationID
+	}
+	if backup.PostgresID != nil {
+		payload["postgresId"] = *backup.PostgresID
+	}
+	if backup.MysqlID != nil {
+		payload["mysqlId"] = *backup.MysqlID
+	}
+	if backup.MariadbID != nil {
+		payload["mariadbId"] = *backup.MariadbID
+	}
+	if backup.MongoID != nil {
+		payload["mongoId"] = *backup.MongoID
+	}
+	if backup.RedisID != nil {
+		payload["redisId"] = *backup.RedisID
+	}
+	if backup.ComposeID != nil {
+		payload["composeId"] = *backup.ComposeID
+	}
+
+	resp, err := c.doRequest("POST", "volumeBackups.create", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result VolumeBackup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) GetVolumeBackup(id string) (*VolumeBackup, error) {
+	endpoint := fmt.Sprintf("volumeBackups.one?volumeBackupId=%s", id)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result VolumeBackup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) UpdateVolumeBackup(backup VolumeBackup) (*VolumeBackup, error) {
+	payload := map[string]interface{}{
+		"volumeBackupId": backup.VolumeBackupID,
+		"name":           backup.Name,
+		"volumeName":     backup.VolumeName,
+		"prefix":         backup.Prefix,
+		"cronExpression": backup.CronExpression,
+		"destinationId":  backup.DestinationID,
+	}
+
+	if backup.ServiceName != nil && *backup.ServiceName != "" {
+		payload["serviceName"] = *backup.ServiceName
+	}
+	if backup.KeepLatestCount > 0 {
+		payload["keepLatestCount"] = backup.KeepLatestCount
+	}
+	payload["turnOff"] = backup.TurnOff
+	payload["enabled"] = backup.Enabled
+
+	resp, err := c.doRequest("POST", "volumeBackups.update", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result VolumeBackup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *DokployClient) DeleteVolumeBackup(id string) error {
+	payload := map[string]string{
+		"volumeBackupId": id,
+	}
+	_, err := c.doRequest("POST", "volumeBackups.delete", payload)
+	return err
+}
+
+func (c *DokployClient) ListVolumeBackups(serviceID, serviceType string) ([]VolumeBackup, error) {
+	endpoint := fmt.Sprintf("volumeBackups.list?id=%s&volumeBackupType=%s", serviceID, serviceType)
+	resp, err := c.doRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []VolumeBackup
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
