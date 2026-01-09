@@ -2291,9 +2291,12 @@ func (c *DokployClient) CreateMount(mount Mount) (*Mount, error) {
 		for i := range mounts {
 			m := &mounts[i]
 			if m.Type == mount.Type && m.MountPath == mount.MountPath {
-				// For file mounts, also check filePath
-				if mount.Type == "file" && m.FilePath != mount.FilePath {
-					continue
+				// For file mounts, also check filePath when both sides are non-empty.
+				// This allows matching mounts when either the input or returned FilePath is empty.
+				if mount.Type == "file" {
+					if mount.FilePath != "" && m.FilePath != "" && m.FilePath != mount.FilePath {
+						continue
+					}
 				}
 				// For bind mounts, check hostPath
 				if mount.Type == "bind" && m.HostPath != mount.HostPath {
@@ -2439,10 +2442,14 @@ func (c *DokployClient) CreatePort(port Port) (*Port, error) {
 			return nil, fmt.Errorf("port created but failed to fetch port details: %w", err)
 		}
 
-		// Find the port matching our input (by publishedPort and targetPort)
+		// Find the port matching our input (by publishedPort, targetPort, and protocol if specified)
 		for i := range ports {
 			p := &ports[i]
 			if p.PublishedPort == port.PublishedPort && p.TargetPort == port.TargetPort {
+				// If a protocol was specified on creation, also require it to match.
+				if port.Protocol != "" && p.Protocol != port.Protocol {
+					continue
+				}
 				return p, nil
 			}
 		}

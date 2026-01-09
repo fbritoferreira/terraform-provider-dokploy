@@ -168,10 +168,26 @@ func (r *SSHKeyResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	// Keep the same ID from state, update name and description from plan
-	plan.ID = state.ID
+	// Refresh the SSH key from the API to ensure state is fully synchronized
+	updatedSSHKey, err := r.client.GetSSHKey(state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading updated SSH Key", err.Error())
+		return
+	}
 
-	diags = resp.State.Set(ctx, plan)
+	// Map the refreshed SSH key data into Terraform state
+	var newState SSHKeyResourceModel
+	newState.ID = types.StringValue(updatedSSHKey.ID)
+	newState.Name = types.StringValue(updatedSSHKey.Name)
+	if updatedSSHKey.Description != "" || !plan.Description.IsNull() {
+		newState.Description = types.StringValue(updatedSSHKey.Description)
+	}
+	// Preserve private_key and public_key from plan (they have RequiresReplace modifier,
+	// so they won't change during update, but we need to ensure they're preserved)
+	newState.PublicKey = plan.PublicKey
+	newState.PrivateKey = plan.PrivateKey
+
+	diags = resp.State.Set(ctx, newState)
 	resp.Diagnostics.Append(diags...)
 }
 

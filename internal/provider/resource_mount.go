@@ -260,6 +260,24 @@ func (r *MountResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		plan.FilePath = types.StringNull()
 	}
 
+	// Derive ServiceID from the appropriate foreign key based on ServiceType
+	switch updatedMount.ServiceType {
+	case "application":
+		plan.ServiceID = types.StringValue(updatedMount.ApplicationID)
+	case "postgres":
+		plan.ServiceID = types.StringValue(updatedMount.PostgresID)
+	case "mariadb":
+		plan.ServiceID = types.StringValue(updatedMount.MariadbID)
+	case "mongo":
+		plan.ServiceID = types.StringValue(updatedMount.MongoID)
+	case "mysql":
+		plan.ServiceID = types.StringValue(updatedMount.MysqlID)
+	case "redis":
+		plan.ServiceID = types.StringValue(updatedMount.RedisID)
+	case "compose":
+		plan.ServiceID = types.StringValue(updatedMount.ComposeID)
+	}
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
