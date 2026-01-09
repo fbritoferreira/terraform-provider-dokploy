@@ -31,6 +31,18 @@ func TestAccSSHKeyResource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "public_key"),
 				),
 			},
+			// Update testing - change name and description
+			{
+				Config: testAccSSHKeyResourceConfig("updated-ssh-key", "Updated SSH Key Description"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("dokploy_ssh_key.test", "name", "updated-ssh-key"),
+					resource.TestCheckResourceAttr("dokploy_ssh_key.test", "description", "Updated SSH Key Description"),
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "id"),
+					// Verify that private_key and public_key are preserved after update
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "private_key"),
+					resource.TestCheckResourceAttrSet("dokploy_ssh_key.test", "public_key"),
+				),
+			},
 			// ImportState testing
 			{
 				ResourceName:            "dokploy_ssh_key.test",
