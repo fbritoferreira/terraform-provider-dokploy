@@ -178,6 +178,7 @@ func (r *RedisResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	// Create with only the fields supported by the create API.
 	redis := client.Redis{
 		Name:             plan.Name.ValueString(),
 		AppName:          plan.AppNamePrefix.ValueString(),
@@ -192,6 +193,44 @@ func (r *RedisResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating Redis instance", err.Error())
 		return
+	}
+
+	// Check if we need to update with additional fields not supported by create API.
+	// Only trigger update if a field is explicitly set (not null AND not unknown).
+	needsUpdate := (!plan.Command.IsNull() && !plan.Command.IsUnknown()) ||
+		(!plan.Env.IsNull() && !plan.Env.IsUnknown()) ||
+		(!plan.MemoryReservation.IsNull() && !plan.MemoryReservation.IsUnknown()) ||
+		(!plan.MemoryLimit.IsNull() && !plan.MemoryLimit.IsUnknown()) ||
+		(!plan.CPUReservation.IsNull() && !plan.CPUReservation.IsUnknown()) ||
+		(!plan.CPULimit.IsNull() && !plan.CPULimit.IsUnknown()) ||
+		(!plan.ExternalPort.IsNull() && !plan.ExternalPort.IsUnknown()) ||
+		(!plan.Replicas.IsNull() && !plan.Replicas.IsUnknown())
+
+	if needsUpdate {
+		updateRedis := client.Redis{
+			RedisID:           createdRedis.RedisID,
+			Command:           plan.Command.ValueString(),
+			Env:               plan.Env.ValueString(),
+			MemoryReservation: plan.MemoryReservation.ValueString(),
+			MemoryLimit:       plan.MemoryLimit.ValueString(),
+			CPUReservation:    plan.CPUReservation.ValueString(),
+			CPULimit:          plan.CPULimit.ValueString(),
+			ExternalPort:      int(plan.ExternalPort.ValueInt64()),
+			Replicas:          int(plan.Replicas.ValueInt64()),
+		}
+
+		_, err := r.client.UpdateRedis(updateRedis)
+		if err != nil {
+			resp.Diagnostics.AddError("Error updating Redis instance after creation", err.Error())
+			return
+		}
+
+		// Fetch the updated resource to get the final state.
+		createdRedis, err = r.client.GetRedis(createdRedis.RedisID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error reading Redis instance after update", err.Error())
+			return
+		}
 	}
 
 	// Set required and computed fields.
