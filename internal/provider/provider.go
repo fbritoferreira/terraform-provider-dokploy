@@ -85,7 +85,6 @@ func (p *DokployProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewEnvironmentResource,
 		NewApplicationResource,
 		NewComposeResource,
-		NewDatabaseResource,
 		NewDomainResource,
 		NewEnvironmentVariablesResource,
 		NewSSHKeyResource,
@@ -97,9 +96,17 @@ func (p *DokployProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewBackupResource,
 		NewServerResource,
 		NewRedisResource,
+		NewPostgresResource,
+		NewMySQLResource,
+		NewMariaDBResource,
+		NewMongoDBResource,
 		NewGitlabProviderResource,
 		NewBitbucketProviderResource,
 		NewGiteaProviderResource,
+		NewOrganizationResource,
+		NewVolumeBackupResource,
+		NewApiKeyResource,
+		NewUserPermissionsResource,
 	}
 }
 
@@ -110,6 +117,11 @@ func (p *DokployProvider) DataSources(_ context.Context) []func() datasource.Dat
 		NewGitlabProvidersDataSource,
 		NewBitbucketProvidersDataSource,
 		NewGiteaProvidersDataSource,
+		NewBackupFilesDataSource,
+		NewOrganizationsDataSource,
+		NewVolumeBackupsDataSource,
+		NewUserDataSource,
+		NewUsersDataSource,
 	}
 }
 

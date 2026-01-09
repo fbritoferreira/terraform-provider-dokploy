@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccBackupResource(t *testing.T) {
+func TestAccBackupResource_Database(t *testing.T) {
 	host := os.Getenv("DOKPLOY_HOST")
 	apiKey := os.Getenv("DOKPLOY_API_KEY")
 
@@ -22,12 +22,13 @@ func TestAccBackupResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccBackupResourceConfig("test-backup-project", "test-backup-env", "test-backup-db", "test-backup-dest", "0 2 * * *", true, "db-backup"),
+				Config: testAccBackupResourceConfig_Database("test-backup-project", "test-backup-env", "test-backup-db", "testbkapp", "testbkdb", "testbkuser", "test-backup-dest", "0 2 * * *", true, "db-backup"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("dokploy_backup.test", "schedule", "0 2 * * *"),
 					resource.TestCheckResourceAttr("dokploy_backup.test", "enabled", "true"),
 					resource.TestCheckResourceAttr("dokploy_backup.test", "prefix", "db-backup"),
 					resource.TestCheckResourceAttr("dokploy_backup.test", "database_type", "postgres"),
+					resource.TestCheckResourceAttr("dokploy_backup.test", "backup_type", "database"),
 					resource.TestCheckResourceAttr("dokploy_backup.test", "keep_latest_count", "30"),
 					resource.TestCheckResourceAttrSet("dokploy_backup.test", "id"),
 					resource.TestCheckResourceAttrSet("dokploy_backup.test", "destination_id"),
@@ -36,7 +37,7 @@ func TestAccBackupResource(t *testing.T) {
 			},
 			// Update and Read testing
 			{
-				Config: testAccBackupResourceConfig("test-backup-project", "test-backup-env", "test-backup-db", "test-backup-dest", "0 3 * * *", false, "updated-backup"),
+				Config: testAccBackupResourceConfig_Database("test-backup-project", "test-backup-env", "test-backup-db", "testbkapp", "testbkdb", "testbkuser", "test-backup-dest", "0 3 * * *", false, "updated-backup"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("dokploy_backup.test", "schedule", "0 3 * * *"),
 					resource.TestCheckResourceAttr("dokploy_backup.test", "enabled", "false"),
@@ -53,7 +54,54 @@ func TestAccBackupResource(t *testing.T) {
 	})
 }
 
-func testAccBackupResourceConfig(projectName, envName, dbName, destName, schedule string, enabled bool, prefix string) string {
+func TestAccBackupResource_Compose(t *testing.T) {
+	host := os.Getenv("DOKPLOY_HOST")
+	apiKey := os.Getenv("DOKPLOY_API_KEY")
+
+	if host == "" || apiKey == "" {
+		t.Skip("DOKPLOY_HOST and DOKPLOY_API_KEY must be set for acceptance tests")
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read testing for compose backup
+			{
+				Config: testAccBackupResourceConfig_Compose("test-compose-backup-project", "test-compose-backup-env", "test-compose-backup-dest", "0 4 * * *", true, "compose-backup"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "schedule", "0 4 * * *"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "enabled", "true"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "prefix", "compose-backup"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "backup_type", "compose"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "service_name", "db"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "database_type", "postgres"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "keep_latest_count", "10"),
+					resource.TestCheckResourceAttrSet("dokploy_backup.test_compose", "id"),
+					resource.TestCheckResourceAttrSet("dokploy_backup.test_compose", "destination_id"),
+					resource.TestCheckResourceAttrSet("dokploy_backup.test_compose", "compose_id"),
+				),
+			},
+			// Update and Read testing
+			{
+				Config: testAccBackupResourceConfig_Compose("test-compose-backup-project", "test-compose-backup-env", "test-compose-backup-dest", "0 5 * * *", false, "updated-compose-backup"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "schedule", "0 5 * * *"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "enabled", "false"),
+					resource.TestCheckResourceAttr("dokploy_backup.test_compose", "prefix", "updated-compose-backup"),
+				),
+			},
+			// ImportState testing
+			{
+				ResourceName:      "dokploy_backup.test_compose",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccBackupResourceConfig_Database(projectName, envName, dbName, appName, dbDbName, dbUser, destName, schedule string, enabled bool, prefix string) string {
 	return fmt.Sprintf(`
 provider "dokploy" {
   host    = "%s"
@@ -70,13 +118,13 @@ resource "dokploy_environment" "test" {
   name       = "%s"
 }
 
-resource "dokploy_database" "test" {
-  project_id     = dokploy_project.test.id
-  environment_id = dokploy_environment.test.id
-  name           = "%s"
-  type           = "postgres"
-  password       = "test_password_123"
-  version        = "16"
+resource "dokploy_postgres" "test" {
+  name              = "%s"
+  app_name          = "%s"
+  database_name     = "%s"
+  database_user     = "%s"
+  database_password = "test_password_123"
+  environment_id    = dokploy_environment.test.id
 }
 
 resource "dokploy_destination" "test" {
@@ -91,13 +139,76 @@ resource "dokploy_destination" "test" {
 
 resource "dokploy_backup" "test" {
   destination_id    = dokploy_destination.test.id
-  database_id       = dokploy_database.test.id
+  database_id       = dokploy_postgres.test.id
+  database_type     = "postgres"
+  backup_type       = "database"
+  schedule          = "%s"
+  enabled           = %t
+  prefix            = "%s"
+  database          = "%s"
+  keep_latest_count = 30
+}
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, dbName, appName, dbDbName, dbUser, destName, schedule, enabled, prefix, dbDbName)
+}
+
+func testAccBackupResourceConfig_Compose(projectName, envName, destName, schedule string, enabled bool, prefix string) string {
+	return fmt.Sprintf(`
+provider "dokploy" {
+  host    = "%s"
+  api_key = "%s"
+}
+
+resource "dokploy_project" "test_compose" {
+  name        = "%s"
+  description = "Test project for compose backup tests"
+}
+
+resource "dokploy_environment" "test_compose" {
+  project_id = dokploy_project.test_compose.id
+  name       = "%s"
+}
+
+resource "dokploy_compose" "test" {
+  name           = "test-compose-backup"
+  environment_id = dokploy_environment.test_compose.id
+  source_type    = "raw"
+  compose_file_content = <<-EOT
+version: '3.8'
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: testpass123
+      POSTGRES_DB: testdb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
+EOT
+}
+
+resource "dokploy_destination" "test_compose" {
+  name              = "%s"
+  storage_provider  = "s3"
+  access_key        = "test-access-key"
+  secret_access_key = "test-secret-key"
+  bucket            = "test-compose-backups"
+  region            = "us-east-1"
+  endpoint          = "https://s3.amazonaws.com"
+}
+
+resource "dokploy_backup" "test_compose" {
+  destination_id    = dokploy_destination.test_compose.id
+  compose_id        = dokploy_compose.test.id
+  backup_type       = "compose"
+  service_name      = "db"
   database_type     = "postgres"
   schedule          = "%s"
   enabled           = %t
   prefix            = "%s"
-  database          = "postgres"
-  keep_latest_count = 30
+  database          = "testdb"
+  keep_latest_count = 10
 }
-`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, dbName, destName, schedule, enabled, prefix)
+`, os.Getenv("DOKPLOY_HOST"), os.Getenv("DOKPLOY_API_KEY"), projectName, envName, destName, schedule, enabled, prefix)
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ahmedali6/terraform-provider-dokploy/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -31,8 +33,11 @@ type BackupResource struct {
 type BackupResourceModel struct {
 	ID              types.String `tfsdk:"id"`
 	DestinationID   types.String `tfsdk:"destination_id"`
+	BackupType      types.String `tfsdk:"backup_type"`
 	DatabaseID      types.String `tfsdk:"database_id"`
 	DatabaseType    types.String `tfsdk:"database_type"`
+	ComposeID       types.String `tfsdk:"compose_id"`
+	ServiceName     types.String `tfsdk:"service_name"`
 	Schedule        types.String `tfsdk:"schedule"`
 	Enabled         types.Bool   `tfsdk:"enabled"`
 	Prefix          types.String `tfsdk:"prefix"`
@@ -46,58 +51,82 @@ func (r *BackupResource) Metadata(_ context.Context, req resource.MetadataReques
 
 func (r *BackupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages automated database backups in Dokploy.",
+		Description: "Manages automated backups in Dokploy for databases and compose services.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "Unique identifier for the backup",
+				Description: "Unique identifier for the backup.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"destination_id": schema.StringAttribute{
 				Required:    true,
-				Description: "ID of the backup destination (S3, MinIO, etc.)",
+				Description: "ID of the backup destination (S3, MinIO, etc.).",
+			},
+			"backup_type": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("database"),
+				Description: "Type of backup: 'database' for database backups or 'compose' for compose service backups.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("database", "compose"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"database_id": schema.StringAttribute{
-				Required:    true,
-				Description: "ID of the database to backup",
+				Optional:    true,
+				Description: "ID of the database to backup. Required when backup_type is 'database'.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"database_type": schema.StringAttribute{
-				Required:    true,
-				Description: "Type of database: postgres, mysql, mariadb, or mongo",
+				Optional:    true,
+				Description: "Type of database: postgres, mysql, mariadb, or mongo. Required when backup_type is 'database'.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("postgres", "mysql", "mariadb", "mongo"),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			"compose_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "ID of the compose to backup. Required when backup_type is 'compose'.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"service_name": schema.StringAttribute{
+				Optional:    true,
+				Description: "Name of the service within the compose to backup. Required when backup_type is 'compose'.",
+			},
 			"schedule": schema.StringAttribute{
 				Required:    true,
-				Description: "Cron schedule for backups (e.g., '0 2 * * *' for daily at 2 AM)",
+				Description: "Cron schedule for backups (e.g., '0 2 * * *' for daily at 2 AM).",
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
-				Description: "Whether the backup schedule is enabled",
+				Description: "Whether the backup schedule is enabled.",
 			},
 			"prefix": schema.StringAttribute{
 				Required:    true,
-				Description: "Prefix for backup files",
+				Description: "Prefix for backup files.",
 			},
 			"database": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("postgres"),
-				Description: "Database name to backup",
+				Required:    true,
+				Description: "Database name to backup (for database backups) or identifier (for compose backups).",
 			},
 			"keep_latest_count": schema.Int64Attribute{
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(30),
-				Description: "Number of recent backups to keep (older ones are deleted)",
+				Description: "Number of recent backups to keep (older ones are deleted).",
 			},
 		},
 	}
@@ -123,6 +152,33 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
+	backupType := plan.BackupType.ValueString()
+	if backupType == "" {
+		backupType = "database"
+	}
+
+	// Validate required fields based on backup_type
+	switch backupType {
+	case "database":
+		if plan.DatabaseID.IsNull() || plan.DatabaseID.ValueString() == "" {
+			resp.Diagnostics.AddError("Missing required field", "database_id is required when backup_type is 'database'")
+			return
+		}
+		if plan.DatabaseType.IsNull() || plan.DatabaseType.ValueString() == "" {
+			resp.Diagnostics.AddError("Missing required field", "database_type is required when backup_type is 'database'")
+			return
+		}
+	case "compose":
+		if plan.ComposeID.IsNull() || plan.ComposeID.ValueString() == "" {
+			resp.Diagnostics.AddError("Missing required field", "compose_id is required when backup_type is 'compose'")
+			return
+		}
+		if plan.ServiceName.IsNull() || plan.ServiceName.ValueString() == "" {
+			resp.Diagnostics.AddError("Missing required field", "service_name is required when backup_type is 'compose'")
+			return
+		}
+	}
+
 	backup := client.Backup{
 		DestinationID:   plan.DestinationID.ValueString(),
 		Schedule:        plan.Schedule.ValueString(),
@@ -130,27 +186,32 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 		Prefix:          plan.Prefix.ValueString(),
 		Database:        plan.Database.ValueString(),
 		KeepLatestCount: int(plan.KeepLatestCount.ValueInt64()),
-		BackupType:      "database",
-		DatabaseType:    plan.DatabaseType.ValueString(),
+		BackupType:      backupType,
 	}
 
-	// Set the appropriate type-specific database ID based on database_type
-	databaseID := plan.DatabaseID.ValueString()
-	switch plan.DatabaseType.ValueString() {
-	case "postgres":
-		backup.PostgresID = databaseID
-	case "mysql":
-		backup.MysqlID = databaseID
-	case "mariadb":
-		backup.MariadbID = databaseID
-	case "mongo":
-		backup.MongoID = databaseID
-	default:
-		resp.Diagnostics.AddError(
-			"Invalid database type",
-			fmt.Sprintf("database_type must be one of: postgres, mysql, mariadb, mongo. Got: %s", plan.DatabaseType.ValueString()),
-		)
-		return
+	switch backupType {
+	case "database":
+		backup.DatabaseType = plan.DatabaseType.ValueString()
+		databaseID := plan.DatabaseID.ValueString()
+		switch plan.DatabaseType.ValueString() {
+		case "postgres":
+			backup.PostgresID = databaseID
+		case "mysql":
+			backup.MysqlID = databaseID
+		case "mariadb":
+			backup.MariadbID = databaseID
+		case "mongo":
+			backup.MongoID = databaseID
+		}
+	case "compose":
+		backup.ComposeID = plan.ComposeID.ValueString()
+		backup.ServiceName = plan.ServiceName.ValueString()
+		// Compose backups still require databaseType field in API (use postgres as default)
+		if !plan.DatabaseType.IsNull() && plan.DatabaseType.ValueString() != "" {
+			backup.DatabaseType = plan.DatabaseType.ValueString()
+		} else {
+			backup.DatabaseType = "postgres"
+		}
 	}
 
 	createdBackup, err := r.client.CreateBackup(backup)
@@ -165,6 +226,11 @@ func (r *BackupResource) Create(ctx context.Context, req resource.CreateRequest,
 	plan.Prefix = types.StringValue(createdBackup.Prefix)
 	plan.Database = types.StringValue(createdBackup.Database)
 	plan.KeepLatestCount = types.Int64Value(int64(createdBackup.KeepLatestCount))
+	plan.BackupType = types.StringValue(createdBackup.BackupType)
+
+	if createdBackup.ServiceName != "" {
+		plan.ServiceName = types.StringValue(createdBackup.ServiceName)
+	}
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -194,18 +260,31 @@ func (r *BackupResource) Read(ctx context.Context, req resource.ReadRequest, res
 	state.Prefix = types.StringValue(backup.Prefix)
 	state.Database = types.StringValue(backup.Database)
 	state.KeepLatestCount = types.Int64Value(int64(backup.KeepLatestCount))
-	state.DatabaseType = types.StringValue(backup.DatabaseType)
+	state.BackupType = types.StringValue(backup.BackupType)
 
-	// Extract database_id from the appropriate type-specific field
-	switch backup.DatabaseType {
-	case "postgres":
-		state.DatabaseID = types.StringValue(backup.PostgresID)
-	case "mysql":
-		state.DatabaseID = types.StringValue(backup.MysqlID)
-	case "mariadb":
-		state.DatabaseID = types.StringValue(backup.MariadbID)
-	case "mongo":
-		state.DatabaseID = types.StringValue(backup.MongoID)
+	// Set database_type for both database and compose backups (API returns it for both)
+	if backup.DatabaseType != "" {
+		state.DatabaseType = types.StringValue(backup.DatabaseType)
+	}
+
+	switch backup.BackupType {
+	case "database":
+		// Extract database_id from the appropriate type-specific field
+		switch backup.DatabaseType {
+		case "postgres":
+			state.DatabaseID = types.StringValue(backup.PostgresID)
+		case "mysql":
+			state.DatabaseID = types.StringValue(backup.MysqlID)
+		case "mariadb":
+			state.DatabaseID = types.StringValue(backup.MariadbID)
+		case "mongo":
+			state.DatabaseID = types.StringValue(backup.MongoID)
+		}
+	case "compose":
+		state.ComposeID = types.StringValue(backup.ComposeID)
+		if backup.ServiceName != "" {
+			state.ServiceName = types.StringValue(backup.ServiceName)
+		}
 	}
 
 	diags = resp.State.Set(ctx, state)
@@ -220,6 +299,11 @@ func (r *BackupResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
+	backupType := plan.BackupType.ValueString()
+	if backupType == "" {
+		backupType = "database"
+	}
+
 	backup := client.Backup{
 		BackupID:        plan.ID.ValueString(),
 		DestinationID:   plan.DestinationID.ValueString(),
@@ -228,7 +312,18 @@ func (r *BackupResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Prefix:          plan.Prefix.ValueString(),
 		Database:        plan.Database.ValueString(),
 		KeepLatestCount: int(plan.KeepLatestCount.ValueInt64()),
-		DatabaseType:    plan.DatabaseType.ValueString(),
+	}
+
+	// Set database type for the update API
+	if !plan.DatabaseType.IsNull() && plan.DatabaseType.ValueString() != "" {
+		backup.DatabaseType = plan.DatabaseType.ValueString()
+	} else {
+		backup.DatabaseType = "postgres" // Default for compose backups
+	}
+
+	// Set service name for compose backups
+	if backupType == "compose" && !plan.ServiceName.IsNull() {
+		backup.ServiceName = plan.ServiceName.ValueString()
 	}
 
 	updatedBackup, err := r.client.UpdateBackup(backup)
@@ -242,6 +337,10 @@ func (r *BackupResource) Update(ctx context.Context, req resource.UpdateRequest,
 	plan.Prefix = types.StringValue(updatedBackup.Prefix)
 	plan.Database = types.StringValue(updatedBackup.Database)
 	plan.KeepLatestCount = types.Int64Value(int64(updatedBackup.KeepLatestCount))
+
+	if updatedBackup.ServiceName != "" {
+		plan.ServiceName = types.StringValue(updatedBackup.ServiceName)
+	}
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
