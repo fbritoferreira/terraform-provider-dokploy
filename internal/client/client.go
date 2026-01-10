@@ -1706,16 +1706,12 @@ func (c *DokployClient) CreateCompose(comp Compose) (*Compose, error) {
 	if comp.Suffix != "" {
 		updatePayload["suffix"] = comp.Suffix
 	}
-	if comp.Randomize {
-		updatePayload["randomize"] = comp.Randomize
-	}
-	if comp.IsolatedDeployment {
-		updatePayload["isolatedDeployment"] = comp.IsolatedDeployment
-	}
-	if comp.IsolatedDeploymentsVolume {
-		updatePayload["isolatedDeploymentsVolume"] = comp.IsolatedDeploymentsVolume
-	}
-	if len(comp.WatchPaths) > 0 {
+	// Always send boolean fields to ensure false values are communicated
+	updatePayload["randomize"] = comp.Randomize
+	updatePayload["isolatedDeployment"] = comp.IsolatedDeployment
+	updatePayload["isolatedDeploymentsVolume"] = comp.IsolatedDeploymentsVolume
+	// Send watchPaths if not nil (allows clearing by sending empty array)
+	if comp.WatchPaths != nil {
 		updatePayload["watchPaths"] = comp.WatchPaths
 	}
 
@@ -1902,7 +1898,8 @@ func (c *DokployClient) UpdateCompose(comp Compose) (*Compose, error) {
 	payload["randomize"] = comp.Randomize
 	payload["isolatedDeployment"] = comp.IsolatedDeployment
 	payload["isolatedDeploymentsVolume"] = comp.IsolatedDeploymentsVolume
-	if len(comp.WatchPaths) > 0 {
+	// Send watchPaths if not nil (allows clearing by sending empty array)
+	if comp.WatchPaths != nil {
 		payload["watchPaths"] = comp.WatchPaths
 	}
 

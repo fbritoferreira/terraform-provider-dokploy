@@ -594,11 +594,38 @@ func (r *ComposeResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	environmentChanged := !plan.EnvironmentID.Equal(state.EnvironmentID)
+
 	// Check if environment_id changed - use compose.move API
-	if !plan.EnvironmentID.Equal(state.EnvironmentID) {
-		_, err := r.client.MoveCompose(plan.ID.ValueString(), plan.EnvironmentID.ValueString())
+	if environmentChanged {
+		movedComp, err := r.client.MoveCompose(plan.ID.ValueString(), plan.EnvironmentID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error moving compose to new environment", err.Error())
+			return
+		}
+
+		// Check if only environment_id changed - if so, skip the update call
+		onlyEnvironmentChanged := plan.Name.Equal(state.Name) &&
+			plan.ComposeFileContent.Equal(state.ComposeFileContent) &&
+			plan.SourceType.Equal(state.SourceType) &&
+			plan.CustomGitUrl.Equal(state.CustomGitUrl) &&
+			plan.CustomGitBranch.Equal(state.CustomGitBranch) &&
+			plan.CustomGitSSHKeyID.Equal(state.CustomGitSSHKeyID) &&
+			plan.ComposePath.Equal(state.ComposePath) &&
+			plan.AutoDeploy.Equal(state.AutoDeploy) &&
+			plan.ComposeType.Equal(state.ComposeType) &&
+			plan.Command.Equal(state.Command) &&
+			plan.Suffix.Equal(state.Suffix) &&
+			plan.Randomize.Equal(state.Randomize) &&
+			plan.IsolatedDeployment.Equal(state.IsolatedDeployment) &&
+			plan.IsolatedDeploymentsVolume.Equal(state.IsolatedDeploymentsVolume) &&
+			plan.WatchPaths.Equal(state.WatchPaths)
+
+		if onlyEnvironmentChanged {
+			// MoveCompose is sufficient; use returned data to update state
+			readComposeIntoState(ctx, &plan, movedComp, &resp.Diagnostics)
+			diags = resp.State.Set(ctx, plan)
+			resp.Diagnostics.Append(diags...)
 			return
 		}
 	}
@@ -908,7 +935,8 @@ func readComposeIntoState(ctx context.Context, state *ComposeResourceModel, comp
 		watchPathsList, d := types.ListValueFrom(ctx, types.StringType, comp.WatchPaths)
 		diags.Append(d...)
 		state.WatchPaths = watchPathsList
-	} else if state.WatchPaths.IsUnknown() {
+	} else {
+		// Set to null when API returns empty array to handle drift properly
 		state.WatchPaths = types.ListNull(types.StringType)
 	}
 
